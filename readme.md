@@ -26,6 +26,7 @@ A complex chaotic structure generated using a polynomial function with tuned coe
 
 2.  Solar-Sail Attractor
 A chaotic attractor with a flowing, dynamic shape resembling solar sail propulsion dynamics, with orbits that fan out like light-driven trajectories.
+![Solor_Sail Attractor](media/solar-sail.png)
 
 ###### To switch between them, locate one of this line at the top of the file:
 ```java
