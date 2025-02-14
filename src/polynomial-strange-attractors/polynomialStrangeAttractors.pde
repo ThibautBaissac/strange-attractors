@@ -50,8 +50,8 @@ SimulationSettings getPoissonSaturneSettings() {
   float halfDivisor = 2.0;  // halfHeight = h/2.0
 
   float[] coeffX = {0.021, 1.182, -1.183, 0.128, -1.12, -0.641, -1.152, -0.834, -0.97, 0.722};
-  float[] coeffY = {0.243038, -0.825, -1.2, -0.835443, -0.835443, -0.364557, 0.458, 0.622785, -0.394937, -1.032911};
-  float[] coeffZ = {-0.455696, 0.673, 0.915, -0.258228, -0.495, -0.264, -0.432, -0.416, -0.877, -0.3};
+  float[] coeffY = {0.243_038, -0.825, -1.2, -0.835443, -0.835_443, -0.364557, 0.458, 0.622785, -0.394_937, -1.032911};
+  float[] coeffZ = {-0.455_696, 0.673, 0.915, -0.258_228, -0.495, -0.264, -0.432, -0.416, -0.877, -0.3};
 
   EulerAxisRotation viewRot = new EulerAxisRotation(
       new PVector(0.304289493528802, 0.760492682863655, 0.573636455813981), 1.78268191887446);
@@ -100,8 +100,8 @@ float sinA, cosA;
 int currentIteration = 0;
 
 // Pre-cached constants for color transform.
-final float COS_P = 0.7009092642998509;
-final float SIN_P = 0.7132504491541816;
+final float COS_P = 0.700_909_264_299_850_898_183_308_345_323_894_172_906_875_610_351_562_5;
+final float SIN_P = 0.713_250_449_154_181_564_992_427_411_198_150_366_544_723_510_742_187_5;
 final float CPOS  = -0.0839;
 final float C10   = 10.55;
 final float B1    = 0.46 - 1.0941;  
