@@ -4,7 +4,7 @@ enum AttractorType {
 }
 
 // --- Global configuration selector.
-final AttractorType CURRENT_TYPE = AttractorType.SOLAR_SAIL;
+final AttractorType CURRENT_TYPE = AttractorType.POISSON_SATURNE;
 SimulationSettings config;
 
 // --- SimulationSettings class.
@@ -63,7 +63,7 @@ SimulationSettings getPoissonSaturneSettings() {
 SimulationSettings getSolarSailSettings() {
   int w = 1800;
   int h = 2200;
-  int iterations = 1_000_000;
+  int iterations = 100_000_000;
   int chunkSize = 10_000;
   float scaleFactor = 1.0;
   float viewAngle = 3.4;
