@@ -28,7 +28,7 @@ A complex chaotic structure generated using a polynomial function with tuned coe
 A chaotic attractor with a flowing, dynamic shape resembling solar sail propulsion dynamics, with orbits that fan out like light-driven trajectories.
 ![Solor_Sail Attractor](media/solar-sail.png)
 
-###### To switch between them, locate one of this line at the top of the file:
+###### To switch between them, locate line at the top of the settings tab:
 ```java
 final AttractorType CURRENT_TYPE = AttractorType.POISSON_SATURNE;
 ```
@@ -61,11 +61,13 @@ This saves the attractor as `strange_attractor.png` in the sketch folder.
 *🔗 Full credits for initial implementation in Rust goes to: [
 https://github.com/Icelk/strange-attractor-renderer](https://github.com/Icelk/strange-attractor-renderer)*
 
+---
 ### Future Improvements
 - Implement more strange attractors.
 - Add interactive controls for real-time visualization.
 - Code refactoring and optimization.
 - ...and more!
 
+---
 ### License
 GNU General Public License v3.0 (see [LICENSE](LICENSE))
