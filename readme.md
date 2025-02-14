@@ -22,6 +22,7 @@ This **Processing** sketch simulates two different strange attractors using a po
 
 1.  Poisson-Saturne Attractor
 A complex chaotic structure generated using a polynomial function with tuned coefficients. It exhibits swirling, layered formations reminiscent of Saturn's rings or Poisson distributions in statistical modeling.
+![Poisson-Saturne Attractor](media/poisson-saturne.png)
 
 2.  Solar-Sail Attractor
 A chaotic attractor with a flowing, dynamic shape resembling solar sail propulsion dynamics, with orbits that fan out like light-driven trajectories.
