@@ -61,6 +61,10 @@ This saves the attractor as `strange_attractor.png` in the sketch folder.
 *🔗 Full credits for initial implementation in Rust goes to: [
 https://github.com/Icelk/strange-attractor-renderer](https://github.com/Icelk/strange-attractor-renderer)*
 
+#### Rossler attractor
+Check the Rossler attractor code: [here](src/rossler/main.pde)
+![Rossler Attractor](media/rossler.gif)
+
 ---
 ### Future Improvements
 - Implement more strange attractors.
