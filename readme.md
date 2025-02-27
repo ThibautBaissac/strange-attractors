@@ -4,7 +4,7 @@ This repository explores the visualization of strange attractors, mathematical s
 
 #### Implemented Languages
 - [Processing](https://processing.org/): A flexible software sketchbook ideal for visual arts and computational design.
-- [R](https://www.r-project.org/): A statistical computing language with strong visualization capabilities.
+- [WebGL](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API): A JavaScript API for rendering high-performance interactive 2D and 3D graphics within browser
 
 ## Getting Started
 1. Clone the repository:
