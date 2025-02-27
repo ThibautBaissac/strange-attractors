@@ -2,8 +2,8 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <title>Animated Strange Attractors</title>
+  <meta charset="UTF-8" />
+  <title>Animated Attractors</title>
   <style>
     body {
       margin: 0;
@@ -41,55 +41,61 @@
       padding: 5px 10px;
     }
   </style>
-  <!-- Include glMatrix for matrix math -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/3.4.2/gl-matrix-min.js"></script>
-</head>
+  <script type="module">
+    import { mat4 } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.2/src/index.js';
 
-<body>
-  <div id="ui">
-    <label for="attractorSelect">Select Attractor:</label>
-    <select id="attractorSelect">
-      <option value="lorenz">Lorenz</option>
-      <option value="rossler">Rössler</option>
-    </select>
-    <label for="speedSlider">Animation Speed (points per frame):</label>
-    <input type="range" id="speedSlider" min="1" max="20" value="5">
-    <span id="speedValue">5</span>
-    <label for="pointsInput">Total Points:</label>
-    <input type="number" id="pointsInput" value="10000" min="1000" step="1000">
-    <button id="resetButton">Reset / Restart</button>
-  </div>
-  <canvas id="glcanvas"></canvas>
-  <script>
-    // Vertex shader program
-    const vsSource = `
-      attribute vec3 aPosition;
+    // Main attractor shaders (using WebGL2)
+    const vsSource = `#version 300 es
+      in vec3 aPosition;
       uniform mat4 uProjectionMatrix;
       uniform mat4 uModelViewMatrix;
-      void main(void) {
+      void main() {
         gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
       }
-    `;
-
-    // Fragment shader program
-    const fsSource = `
+      `;
+    const fsSource = `#version 300 es
       precision mediump float;
-      void main(void) {
-        gl_FragColor = vec4(1.0, 0.6, 0.2, 1.0);
+      out vec4 fragColor;
+      void main() {
+        fragColor = vec4(1.0, 0.6, 0.2, 1.0);
       }
-    `;
+      `;
 
-    // Initialize WebGL context
-    function initWebGL(canvas) {
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    // Coordinate system widget shaders: supports per-vertex color.
+    const csVsSource = `#version 300 es
+      in vec3 aPosition;
+      in vec3 aColor;
+      uniform mat4 uProjectionMatrix;
+      uniform mat4 uModelViewMatrix;
+      out vec3 vColor;
+      void main() {
+        gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+        vColor = aColor;
+      }
+      `;
+    const csFsSource = `#version 300 es
+      precision mediump float;
+      in vec3 vColor;
+      out vec4 fragColor;
+      void main() {
+        fragColor = vec4(vColor, 1.0);
+      }
+      `;
+
+    // Initialize WebGL context (try WebGL2 first)
+    const initWebGL = (canvas) => {
+      let gl = canvas.getContext('webgl2');
       if (!gl) {
-        alert("Unable to initialize WebGL. Your browser may not support it.");
+        gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) {
+          alert('Unable to initialize WebGL. Your browser may not support it.');
+        }
       }
       return gl;
-    }
+    };
 
     // Compile a shader from source
-    function loadShader(gl, type, source) {
+    const loadShader = (gl, type, source) => {
       const shader = gl.createShader(type);
       gl.shaderSource(shader, source);
       gl.compileShader(shader);
@@ -99,10 +105,10 @@
         return null;
       }
       return shader;
-    }
+    };
 
-    // Initialize the shader program
-    function initShaderProgram(gl, vsSource, fsSource) {
+    // Initialize shader program
+    const initShaderProgram = (gl, vsSource, fsSource) => {
       const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
       const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
       const shaderProgram = gl.createProgram();
@@ -114,14 +120,17 @@
         return null;
       }
       return shaderProgram;
-    }
+    };
 
-    // Generate Lorenz attractor points using Euler integration
-    function generateLorenzPoints({
-      sigma = 10, rho = 28, beta = 8 / 3,
-      dt = 0.01, numPoints = 10000,
+    // Generate attractor points
+    const generateLorenzPoints = ({
+      sigma = 10,
+      rho = 28,
+      beta = 8 / 3,
+      dt = 0.01,
+      numPoints = 10000,
       initial = { x: 0.1, y: 0, z: 0 }
-    } = {}) {
+    } = {}) => {
       const points = [];
       let { x, y, z } = initial;
       for (let i = 0; i < numPoints; i++) {
@@ -134,14 +143,16 @@
         points.push(x, y, z);
       }
       return new Float32Array(points);
-    }
+    };
 
-    // Generate Rössler attractor points using Euler integration
-    function generateRosslerPoints({
-      a = 0.2, b = 0.2, c = 5.7,
-      dt = 0.02, numPoints = 10000,
+    const generateRosslerPoints = ({
+      a = 0.2,
+      b = 0.2,
+      c = 5.7,
+      dt = 0.02,
+      numPoints = 10000,
       initial = { x: 0.1, y: 0, z: 0 }
-    } = {}) {
+    } = {}) => {
       const points = [];
       let { x, y, z } = initial;
       for (let i = 0; i < numPoints; i++) {
@@ -154,39 +165,58 @@
         points.push(x, y, z);
       }
       return new Float32Array(points);
-    }
+    };
 
-    // Initialize buffers with provided positions data
-    function initBuffers(gl, positions) {
+    // Initialize buffers for attractor points
+    const initBuffers = (gl, positions) => {
       const positionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
       return {
         position: positionBuffer,
-        numPoints: positions.length / 3,
+        numPoints: positions.length / 3
       };
-    }
+    };
 
-    // Global variables for attractor buffers, current selection, and animation progress
-    let currentAttractor = 'lorenz';
-    let buffers = null;
-    let gl = null;
-    let currentDrawCount = 0;  // How many points to draw so far
-    let drawIncrement = 5;    // Points added per frame (controlled by slider)
-    let totalPoints = 10000;   // Total points to generate (controlled by input)
+    // Create buffers for the coordinate system widget (three axes)
+    const createCSBuffers = (gl) => {
+      // Vertices for axes: each axis from (0,0,0) to (1,0,0), etc.
+      const vertices = new Float32Array([
+        0, 0, 0, 1, 0, 0,  // X axis
+        0, 0, 0, 0, 1, 0,  // Y axis
+        0, 0, 0, 0, 0, 1   // Z axis
+      ]);
+      // Colors for each vertex (red for X, green for Y, blue for Z)
+      const colors = new Float32Array([
+        1, 0, 0, 1, 0, 0,  // Red X
+        0, 1, 0, 0, 1, 0,  // Green Y
+        0, 0, 1, 0, 0, 1   // Blue Z
+      ]);
+      const vertexBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+      const colorBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+      return {
+        vertex: vertexBuffer,
+        color: colorBuffer,
+        numVertices: vertices.length / 3
+      };
+    };
 
     // Global camera parameters
     let cameraAngleX = 0;
     let cameraAngleY = Math.PI / 4;
     let cameraDistance = 80;
 
-    // Mouse interaction variables
+    // Mouse interaction state
     let isDragging = false;
     let lastMouseX = 0;
     let lastMouseY = 0;
 
-    // Setup camera controls: rotation and zoom
-    function setupCameraControls(canvas) {
+    // Set up camera controls
+    const setupCameraControls = (canvas) => {
       canvas.addEventListener('mousedown', (e) => {
         isDragging = true;
         lastMouseX = e.clientX;
@@ -212,24 +242,24 @@
         cameraDistance += e.deltaY * 0.05;
         cameraDistance = Math.max(cameraDistance, 10);
       });
-    }
+    };
 
-    // Draw the scene.
-    function drawScene(gl, programInfo, buffers, drawCount) {
+    // Draw the main attractor scene
+    const drawScene = (gl, programInfo, buffers, drawCount) => {
       gl.clearColor(0.0, 0.0, 0.0, 1.0);
       gl.clearDepth(1.0);
       gl.enable(gl.DEPTH_TEST);
       gl.depthFunc(gl.LEQUAL);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      const fieldOfView = 45 * Math.PI / 180;
+      const fieldOfView = (45 * Math.PI) / 180;
       const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
       const zNear = 0.1;
       const zFar = 1000.0;
-      const projectionMatrix = glMatrix.mat4.create();
-      glMatrix.mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
+      const projectionMatrix = mat4.create();
+      mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
 
-      // Compute camera position in spherical coordinates
+      // Compute camera position using spherical coordinates
       const eye = [
         cameraDistance * Math.sin(cameraAngleY) * Math.cos(cameraAngleX),
         cameraDistance * Math.cos(cameraAngleY),
@@ -237,126 +267,188 @@
       ];
       const center = [0, 0, 0];
       const up = [0, 1, 0];
-      const modelViewMatrix = glMatrix.mat4.create();
-      glMatrix.mat4.lookAt(modelViewMatrix, eye, center, up);
+      const modelViewMatrix = mat4.create();
+      mat4.lookAt(modelViewMatrix, eye, center, up);
 
-      // Bind buffer and set up attribute pointers
-      {
-        const numComponents = 3;
-        const type = gl.FLOAT;
-        const normalize = false;
-        const stride = 0;
-        const offset = 0;
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-        gl.vertexAttribPointer(
-          programInfo.attribLocations.aPosition,
-          numComponents,
-          type,
-          normalize,
-          stride,
-          offset);
-        gl.enableVertexAttribArray(programInfo.attribLocations.aPosition);
-      }
+      // Bind main attractor position buffer and configure attribute
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+      gl.vertexAttribPointer(programInfo.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(programInfo.attribLocations.aPosition);
 
       gl.useProgram(programInfo.program);
       gl.uniformMatrix4fv(programInfo.uniformLocations.uProjectionMatrix, false, projectionMatrix);
       gl.uniformMatrix4fv(programInfo.uniformLocations.uModelViewMatrix, false, modelViewMatrix);
-      // Only draw up to drawCount (or all points if drawCount exceeds total)
+
       const count = Math.min(drawCount, buffers.numPoints);
       gl.drawArrays(gl.LINE_STRIP, 0, count);
-    }
+    };
 
-    // Function to update the buffer based on the selected attractor.
-    // Resets the animation progress.
-    function updateAttractor(gl, attractorType) {
-      let positions;
+    // Draw the coordinate system widget in the top-right corner
+    const drawCoordinateSystem = (gl, csProgramInfo, csBuffers) => {
+      // Save current viewport dimensions
+      const canvasWidth = gl.canvas.width;
+      const canvasHeight = gl.canvas.height;
+      // Define widget size (e.g., 150x150 pixels)
+      const widgetSize = 150;
+      gl.viewport(canvasWidth - widgetSize - 10, 10, widgetSize, widgetSize);
+
+      // Use an orthographic projection
+      const projMatrix = mat4.create();
+      mat4.ortho(projMatrix, -1, 1, -1, 1, -1, 1);
+
+      // Create a model view matrix that reflects the current camera rotation.
+      // This widget is drawn without translation so that the axes remain at the origin.
+      const mvMatrix = mat4.create();
+      // Rotate according to camera angles (note: order may be adjusted as desired)
+      mat4.rotate(mvMatrix, mvMatrix, cameraAngleY, [1, 0, 0]);
+      mat4.rotate(mvMatrix, mvMatrix, cameraAngleX, [0, 1, 0]);
+
+      gl.useProgram(csProgramInfo.program);
+      gl.uniformMatrix4fv(csProgramInfo.uniformLocations.uProjectionMatrix, false, projMatrix);
+      gl.uniformMatrix4fv(csProgramInfo.uniformLocations.uModelViewMatrix, false, mvMatrix);
+
+      // Bind vertex positions for the widget
+      gl.bindBuffer(gl.ARRAY_BUFFER, csBuffers.vertex);
+      gl.vertexAttribPointer(csProgramInfo.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(csProgramInfo.attribLocations.aPosition);
+
+      // Bind vertex colors for the widget
+      gl.bindBuffer(gl.ARRAY_BUFFER, csBuffers.color);
+      gl.vertexAttribPointer(csProgramInfo.attribLocations.aColor, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(csProgramInfo.attribLocations.aColor);
+
+      // Draw axes as lines (each axis is two vertices)
+      gl.drawArrays(gl.LINES, 0, csBuffers.numVertices);
+
+      // Reset viewport to full canvas for next frame
+      gl.viewport(0, 0, canvasWidth, canvasHeight);
+    };
+
+    // Global state for attractor rendering
+    let currentAttractor = 'lorenz';
+    let buffers = null;
+    let currentDrawCount = 0;
+    let drawIncrement = 5;
+    let totalPoints = 10000;
+    let gl = null;
+
+    // Update attractor data based on selection
+    const updateAttractor = (attractorType) => {
       const params = { numPoints: totalPoints };
-      if (attractorType === 'lorenz') {
-        positions = generateLorenzPoints(params);
-      } else if (attractorType === 'rossler') {
-        positions = generateRosslerPoints(params);
-      }
+      const positions =
+        attractorType === 'lorenz'
+          ? generateLorenzPoints(params)
+          : generateRosslerPoints(params);
       buffers = initBuffers(gl, positions);
-      currentDrawCount = 0; // Reset animation progress when switching or updating
-    }
+      currentDrawCount = 0;
+    };
 
-    // Main function to start the WebGL application
-    function main() {
+    let csBuffers = null;
+    let csProgramInfo = null;
+
+    // Main function to initialize the app
+    const main = () => {
       const canvas = document.getElementById('glcanvas');
       gl = initWebGL(canvas);
       if (!gl) return;
-
-      // Set up camera controls
       setupCameraControls(canvas);
 
-      // Initialize shaders and program
+      // Main attractor shader program and info
       const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
       const programInfo = {
         program: shaderProgram,
         attribLocations: {
-          aPosition: gl.getAttribLocation(shaderProgram, 'aPosition'),
+          aPosition: gl.getAttribLocation(shaderProgram, 'aPosition')
         },
         uniformLocations: {
           uProjectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
-          uModelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
-        },
+          uModelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix')
+        }
       };
 
-      // Get UI elements for additional controls
+      // Coordinate system shader program and buffers
+      const csShaderProgram = initShaderProgram(gl, csVsSource, csFsSource);
+      csProgramInfo = {
+        program: csShaderProgram,
+        attribLocations: {
+          aPosition: gl.getAttribLocation(csShaderProgram, 'aPosition'),
+          aColor: gl.getAttribLocation(csShaderProgram, 'aColor')
+        },
+        uniformLocations: {
+          uProjectionMatrix: gl.getUniformLocation(csShaderProgram, 'uProjectionMatrix'),
+          uModelViewMatrix: gl.getUniformLocation(csShaderProgram, 'uModelViewMatrix')
+        }
+      };
+      csBuffers = createCSBuffers(gl);
+
+      // UI Elements
       const attractorSelect = document.getElementById('attractorSelect');
       const speedSlider = document.getElementById('speedSlider');
       const speedValue = document.getElementById('speedValue');
       const pointsInput = document.getElementById('pointsInput');
       const resetButton = document.getElementById('resetButton');
 
-      // Update speed control UI
       speedSlider.addEventListener('input', (e) => {
         drawIncrement = Number(e.target.value);
         speedValue.textContent = e.target.value;
       });
 
-      // Update points count and regenerate the attractor when input changes
       pointsInput.addEventListener('change', (e) => {
         totalPoints = Number(e.target.value);
-        updateAttractor(gl, currentAttractor);
+        updateAttractor(currentAttractor);
       });
 
-      // Handle attractor switching from dropdown
       attractorSelect.addEventListener('change', (e) => {
         currentAttractor = e.target.value;
-        updateAttractor(gl, currentAttractor);
+        updateAttractor(currentAttractor);
       });
 
-      // Reset button: clear the canvas and restart the animation.
       resetButton.addEventListener('click', () => {
-        updateAttractor(gl, currentAttractor);
+        updateAttractor(currentAttractor);
       });
 
-      // Initialize attractor buffers with the default (Lorenz)
-      updateAttractor(gl, currentAttractor);
+      updateAttractor(currentAttractor);
 
-      // Resize canvas to fill the window
-      function resizeCanvas() {
+      // Resize canvas to fill window
+      const resizeCanvas = () => {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-      }
+      };
       window.addEventListener('resize', resizeCanvas);
       resizeCanvas();
 
-      // Animation loop: update the scene continuously
-      function animate() {
+      // Animation loop: draw main scene and then coordinate widget.
+      const animate = () => {
         if (currentDrawCount < buffers.numPoints) {
           currentDrawCount += drawIncrement;
         }
         drawScene(gl, programInfo, buffers, currentDrawCount);
+        drawCoordinateSystem(gl, csProgramInfo, csBuffers);
         requestAnimationFrame(animate);
-      }
+      };
       animate();
-    }
+    };
 
-    window.onload = main;
+    window.addEventListener('load', main);
   </script>
+</head>
+
+<body>
+  <div id="ui">
+    <label for="attractorSelect">Select Attractor:</label>
+    <select id="attractorSelect">
+      <option value="lorenz">Lorenz</option>
+      <option value="rossler">Rössler</option>
+    </select>
+    <label for="speedSlider">Animation Speed (points per frame):</label>
+    <input type="range" id="speedSlider" min="1" max="20" value="5" />
+    <span id="speedValue">5</span>
+    <label for="pointsInput">Total Points:</label>
+    <input type="number" id="pointsInput" value="10000" min="1000" step="1000" />
+    <button id="resetButton">Reset / Restart</button>
+  </div>
+  <canvas id="glcanvas"></canvas>
 </body>
 
 </html>
