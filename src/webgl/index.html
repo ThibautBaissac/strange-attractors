@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>Animated Attractors</title>
+  <title>Animated Attractors with Coordinate System & Modern WebGL</title>
   <style>
     body {
       margin: 0;
@@ -45,23 +45,69 @@
     import { mat4 } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.2/src/index.js';
 
     // Main attractor shaders (using WebGL2)
+    // The vertex shader now passes the raw position to the fragment shader.
     const vsSource = `#version 300 es
       in vec3 aPosition;
       uniform mat4 uProjectionMatrix;
       uniform mat4 uModelViewMatrix;
+      out vec3 vPosition;
       void main() {
-        gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+        vec4 pos = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+        gl_Position = pos;
+        vPosition = aPosition;
       }
       `;
+    // The fragment shader uses the passed position and the selected colormap (via uniform uColormap)
     const fsSource = `#version 300 es
       precision mediump float;
+      in vec3 vPosition;
+      uniform int uColormap;
       out vec4 fragColor;
+
+      vec3 defaultColormap(vec3 pos) {
+        // Simple mapping: use sine functions for each component, normalized to [0,1]
+        return (sin(pos) + 1.0) * 0.5;
+      }
+
+      vec3 blueColormap(vec3 pos) {
+        return vec3(0.0, (sin(pos.y) + 1.0) * 0.5, 1.0);
+      }
+
+      vec3 greenColormap(vec3 pos) {
+        return vec3((sin(pos.x) + 1.0) * 0.5, 1.0, (sin(pos.z) + 1.0) * 0.5);
+      }
+
+      vec3 redColormap(vec3 pos) {
+        return vec3(1.0, (sin(pos.y) + 1.0) * 0.5, (sin(pos.z) + 1.0) * 0.5);
+      }
+
+      vec3 rainbowColormap(vec3 pos) {
+        float r = (sin(pos.x) + 1.0) * 0.5;
+        float g = (sin(pos.y + 1.0) + 1.0) * 0.5;
+        float b = (sin(pos.z + 2.0) + 1.0) * 0.5;
+        return vec3(r, g, b);
+      }
+
       void main() {
-        fragColor = vec4(1.0, 0.6, 0.2, 1.0);
+        vec3 color;
+        if(uColormap == 0) {
+          color = defaultColormap(vPosition);
+        } else if(uColormap == 1) {
+          color = blueColormap(vPosition);
+        } else if(uColormap == 2) {
+          color = greenColormap(vPosition);
+        } else if(uColormap == 3) {
+          color = redColormap(vPosition);
+        } else if(uColormap == 4) {
+          color = rainbowColormap(vPosition);
+        } else {
+          color = defaultColormap(vPosition);
+        }
+        fragColor = vec4(color, 1.0);
       }
       `;
 
-    // Coordinate system widget shaders: supports per-vertex color.
+    // Coordinate system widget shaders (unchanged)
     const csVsSource = `#version 300 es
       in vec3 aPosition;
       in vec3 aColor;
@@ -167,8 +213,13 @@
       return new Float32Array(points);
     };
 
-    // Initialize buffers for attractor points
+    // Global variables to hold attractor data and center.
+    let currentPositions = null;
+    let attractorCenter = [0, 0, 0];
+
+    // Initialize buffers for attractor points and store positions for later centering.
     const initBuffers = (gl, positions) => {
+      currentPositions = positions; // store the positions array globally
       const positionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
@@ -244,7 +295,19 @@
       });
     };
 
-    // Draw the main attractor scene
+    // Global state for colormap selection.
+    // We map UI string values to integer IDs that the shader uses:
+    // 0: default, 1: blue, 2: green, 3: red, 4: rainbow
+    let currentColormap = 0;
+    const colormapMap = {
+      'default': 0,
+      'blue': 1,
+      'green': 2,
+      'red': 3,
+      'rainbow': 4
+    };
+
+    // Draw the main attractor scene (using position-based color)
     const drawScene = (gl, programInfo, buffers, drawCount) => {
       gl.clearColor(0.0, 0.0, 0.0, 1.0);
       gl.clearDepth(1.0);
@@ -259,13 +322,14 @@
       const projectionMatrix = mat4.create();
       mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
 
-      // Compute camera position using spherical coordinates
+      // Compute camera position using spherical coordinates.
+      // Note that we now use "attractorCenter" as the look-at target.
       const eye = [
-        cameraDistance * Math.sin(cameraAngleY) * Math.cos(cameraAngleX),
-        cameraDistance * Math.cos(cameraAngleY),
-        cameraDistance * Math.sin(cameraAngleY) * Math.sin(cameraAngleX)
+        cameraDistance * Math.sin(cameraAngleY) * Math.cos(cameraAngleX) + attractorCenter[0],
+        cameraDistance * Math.cos(cameraAngleY) + attractorCenter[1],
+        cameraDistance * Math.sin(cameraAngleY) * Math.sin(cameraAngleX) + attractorCenter[2]
       ];
-      const center = [0, 0, 0];
+      const center = attractorCenter;
       const up = [0, 1, 0];
       const modelViewMatrix = mat4.create();
       mat4.lookAt(modelViewMatrix, eye, center, up);
@@ -278,6 +342,8 @@
       gl.useProgram(programInfo.program);
       gl.uniformMatrix4fv(programInfo.uniformLocations.uProjectionMatrix, false, projectionMatrix);
       gl.uniformMatrix4fv(programInfo.uniformLocations.uModelViewMatrix, false, modelViewMatrix);
+      // Pass the colormap ID to the shader
+      gl.uniform1i(programInfo.uniformLocations.uColormap, currentColormap);
 
       const count = Math.min(drawCount, buffers.numPoints);
       gl.drawArrays(gl.LINE_STRIP, 0, count);
@@ -297,9 +363,7 @@
       mat4.ortho(projMatrix, -1, 1, -1, 1, -1, 1);
 
       // Create a model view matrix that reflects the current camera rotation.
-      // This widget is drawn without translation so that the axes remain at the origin.
       const mvMatrix = mat4.create();
-      // Rotate according to camera angles (note: order may be adjusted as desired)
       mat4.rotate(mvMatrix, mvMatrix, cameraAngleY, [1, 0, 0]);
       mat4.rotate(mvMatrix, mvMatrix, cameraAngleX, [0, 1, 0]);
 
@@ -341,10 +405,42 @@
           : generateRosslerPoints(params);
       buffers = initBuffers(gl, positions);
       currentDrawCount = 0;
+      // Reset attractor center to [0, 0, 0] until user re-centers.
+      attractorCenter = [0, 0, 0];
     };
 
-    let csBuffers = null;
-    let csProgramInfo = null;
+    // Recenter and fit the attractor in the viewport by computing its bounding sphere.
+    const recenterView = () => {
+      if (!currentPositions) return;
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (let i = 0; i < currentPositions.length; i += 3) {
+        const x = currentPositions[i];
+        const y = currentPositions[i + 1];
+        const z = currentPositions[i + 2];
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (z < minZ) minZ = z;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+        if (z > maxZ) maxZ = z;
+      }
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const centerZ = (minZ + maxZ) / 2;
+      attractorCenter = [centerX, centerY, centerZ];
+      // Compute the maximum distance from the center to any point
+      let radius = 0;
+      for (let i = 0; i < currentPositions.length; i += 3) {
+        const dx = currentPositions[i] - centerX;
+        const dy = currentPositions[i + 1] - centerY;
+        const dz = currentPositions[i + 2] - centerZ;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist > radius) radius = dist;
+      }
+      // Set camera distance to roughly twice the radius for a good fit.
+      cameraDistance = radius * 2;
+    };
 
     // Main function to initialize the app
     const main = () => {
@@ -362,13 +458,14 @@
         },
         uniformLocations: {
           uProjectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
-          uModelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix')
+          uModelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
+          uColormap: gl.getUniformLocation(shaderProgram, 'uColormap')
         }
       };
 
       // Coordinate system shader program and buffers
       const csShaderProgram = initShaderProgram(gl, csVsSource, csFsSource);
-      csProgramInfo = {
+      const csProgramInfo = {
         program: csShaderProgram,
         attribLocations: {
           aPosition: gl.getAttribLocation(csShaderProgram, 'aPosition'),
@@ -379,7 +476,7 @@
           uModelViewMatrix: gl.getUniformLocation(csShaderProgram, 'uModelViewMatrix')
         }
       };
-      csBuffers = createCSBuffers(gl);
+      const csBuffers = createCSBuffers(gl);
 
       // UI Elements
       const attractorSelect = document.getElementById('attractorSelect');
@@ -387,6 +484,8 @@
       const speedValue = document.getElementById('speedValue');
       const pointsInput = document.getElementById('pointsInput');
       const resetButton = document.getElementById('resetButton');
+      const colormapSelect = document.getElementById('colormapSelect');
+      const centerButton = document.getElementById('centerButton');
 
       speedSlider.addEventListener('input', (e) => {
         drawIncrement = Number(e.target.value);
@@ -401,6 +500,17 @@
       attractorSelect.addEventListener('change', (e) => {
         currentAttractor = e.target.value;
         updateAttractor(currentAttractor);
+      });
+
+      // Update colormap based on the selection.
+      colormapSelect.addEventListener('change', (e) => {
+        const selected = e.target.value;
+        currentColormap = colormapMap[selected] || 0;
+      });
+
+      // Center / Fit Attractor button
+      centerButton.addEventListener('click', () => {
+        recenterView();
       });
 
       resetButton.addEventListener('click', () => {
@@ -441,12 +551,21 @@
       <option value="lorenz">Lorenz</option>
       <option value="rossler">Rössler</option>
     </select>
+    <label for="colormapSelect">Select Color Map:</label>
+    <select id="colormapSelect">
+      <option value="default">Default</option>
+      <option value="blue">Blue</option>
+      <option value="green">Green</option>
+      <option value="red">Red</option>
+      <option value="rainbow">Rainbow</option>
+    </select>
     <label for="speedSlider">Animation Speed (points per frame):</label>
     <input type="range" id="speedSlider" min="1" max="20" value="5" />
     <span id="speedValue">5</span>
     <label for="pointsInput">Total Points:</label>
     <input type="number" id="pointsInput" value="10000" min="1000" step="1000" />
     <button id="resetButton">Reset / Restart</button>
+    <button id="centerButton">Center / Fit Attractor</button>
   </div>
   <canvas id="glcanvas"></canvas>
 </body>
