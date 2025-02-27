@@ -3,11 +3,26 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>Animated Attractors with Coordinate System & Modern WebGL</title>
+  <title>Animated StrangeAttractors</title>
   <style>
+    /* CSS Variables for easy theming */
+    :root {
+      --primary-color: #4a90e2;
+      --background-color: rgba(255, 255, 255, 0.75);
+      --text-color: #333;
+      --border-radius: 12px;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       overflow: hidden;
+      font-family: 'Roboto', sans-serif;
+      background: #f4f7f9;
     }
 
     canvas {
@@ -19,424 +34,411 @@
 
     #ui {
       position: absolute;
-      top: 10px;
-      left: 10px;
+      top: 5px;
+      left: 5px;
       z-index: 100;
-      background: rgba(255, 255, 255, 0.8);
-      padding: 10px;
-      border-radius: 4px;
-      font-family: sans-serif;
+      background: var(--background-color);
+      padding: 15px;
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+      max-width: 250px;
     }
 
-    #ui label,
-    #ui input,
-    #ui select,
-    #ui span,
-    #ui button {
-      display: block;
+    /* Form elements styling */
+    #ui label {
+      font-size: 0.9rem;
       margin-bottom: 5px;
+      color: var(--text-color);
+    }
+
+    #ui select,
+    #ui input[type="range"],
+    #ui input[type="number"] {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      background: #fff;
+      border-radius: var(--border-radius);
+    }
+
+    #ui input[type="range"] {
+      padding: 0;
+    }
+
+    #ui span {
+      display: block;
+      font-size: 0.85rem;
+      text-align: right;
+      color: var(--text-color);
+      margin-top: -10px;
+      margin-bottom: 10px;
     }
 
     #ui button {
-      padding: 5px 10px;
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 50px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.3s;
+      margin-bottom: 10px;
+      color: #fff;
+      background: var(--primary-color);
+    }
+
+    #ui button:hover {
+      background: darken(var(--primary-color), 10%);
+    }
+
+    /* Last button without extra margin */
+    #ui button:last-of-type {
+      margin-bottom: 0;
     }
   </style>
+  <!-- We use gl-matrix for matrix math -->
   <script type="module">
     import { mat4 } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.2/src/index.js';
 
-    // Main attractor shaders (using WebGL2)
-    // The vertex shader now passes the raw position to the fragment shader.
-    const vsSource = `#version 300 es
-      in vec3 aPosition;
-      uniform mat4 uProjectionMatrix;
-      uniform mat4 uModelViewMatrix;
-      out vec3 vPosition;
-      void main() {
-        vec4 pos = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
-        gl_Position = pos;
-        vPosition = aPosition;
+    /*******************************
+     * Utility: GLUtil
+     *******************************/
+    class GLUtil {
+      static initWebGL(canvas) {
+        let gl = canvas.getContext("webgl2");
+        if (!gl) {
+          gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+          if (!gl) {
+            alert("Unable to initialize WebGL. Your browser may not support it.");
+          }
+        }
+        return gl;
       }
+      static loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          alert("Error compiling shader: " + gl.getShaderInfoLog(shader));
+          gl.deleteShader(shader);
+          return null;
+        }
+        return shader;
+      }
+      static initShaderProgram(gl, vsSource, fsSource) {
+        const vertexShader = GLUtil.loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = GLUtil.loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        const shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+          alert("Unable to initialize the shader program: " + gl.getProgramInfoLog(shaderProgram));
+          return null;
+        }
+        return shaderProgram;
+      }
+    }
+
+    /*******************************
+     * Shader Sources
+     *******************************/
+    // Attractor shaders
+    const vsSource = `#version 300 es
+        in vec3 aPosition;
+        uniform mat4 uProjectionMatrix;
+        uniform mat4 uModelViewMatrix;
+        out vec3 vPosition;
+        void main() {
+          vec4 pos = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+          gl_Position = pos;
+          vPosition = aPosition;
+        }
       `;
-    // The fragment shader uses the passed position and the selected colormap (via uniform uColormap)
     const fsSource = `#version 300 es
-      precision mediump float;
-      in vec3 vPosition;
-      uniform int uColormap;
-      out vec4 fragColor;
+        precision mediump float;
+        in vec3 vPosition;
+        uniform int uColormap;
+        out vec4 fragColor;
 
       vec3 defaultColormap(vec3 pos) {
+      vec3 defaultColormap(vec3 pos) {
         // Simple mapping: use sine functions for each component, normalized to [0,1]
-        return (sin(pos) + 1.0) * 0.5;
-      }
-
-      vec3 blueColormap(vec3 pos) {
-        return vec3(0.0, (sin(pos.y) + 1.0) * 0.5, 1.0);
-      }
-
-      vec3 greenColormap(vec3 pos) {
-        return vec3((sin(pos.x) + 1.0) * 0.5, 1.0, (sin(pos.z) + 1.0) * 0.5);
-      }
-
-      vec3 redColormap(vec3 pos) {
-        return vec3(1.0, (sin(pos.y) + 1.0) * 0.5, (sin(pos.z) + 1.0) * 0.5);
-      }
-
-      vec3 rainbowColormap(vec3 pos) {
-        float r = (sin(pos.x) + 1.0) * 0.5;
-        float g = (sin(pos.y + 1.0) + 1.0) * 0.5;
-        float b = (sin(pos.z + 2.0) + 1.0) * 0.5;
-        return vec3(r, g, b);
-      }
-
-      void main() {
-        vec3 color;
-        if(uColormap == 0) {
-          color = defaultColormap(vPosition);
-        } else if(uColormap == 1) {
-          color = blueColormap(vPosition);
-        } else if(uColormap == 2) {
-          color = greenColormap(vPosition);
-        } else if(uColormap == 3) {
-          color = redColormap(vPosition);
-        } else if(uColormap == 4) {
-          color = rainbowColormap(vPosition);
-        } else {
-          color = defaultColormap(vPosition);
+        vec3 defaultColormap(vec3 pos) {
+        // Simple mapping: use sine functions for each component, normalized to [0,1]
+          return (sin(pos) + 1.0) * 0.5;
         }
-        fragColor = vec4(color, 1.0);
-      }
+        vec3 blueColormap(vec3 pos) {
+          return vec3(0.0, (sin(pos.y) + 1.0) * 0.5, 1.0);
+        }
+        vec3 greenColormap(vec3 pos) {
+          return vec3((sin(pos.x) + 1.0) * 0.5, 1.0, (sin(pos.z) + 1.0) * 0.5);
+        }
+        vec3 redColormap(vec3 pos) {
+          return vec3(1.0, (sin(pos.y) + 1.0) * 0.5, (sin(pos.z) + 1.0) * 0.5);
+        }
+        vec3 rainbowColormap(vec3 pos) {
+          float r = (sin(pos.x) + 1.0) * 0.5;
+          float g = (sin(pos.y + 1.0) + 1.0) * 0.5;
+          float b = (sin(pos.z + 2.0) + 1.0) * 0.5;
+          return vec3(r, g, b);
+        }
+
+        void main() {
+          vec3 color;
+          if(uColormap == 0) {
+            color = defaultColormap(vPosition);
+          } else if(uColormap == 1) {
+            color = blueColormap(vPosition);
+          } else if(uColormap == 2) {
+            color = greenColormap(vPosition);
+          } else if(uColormap == 3) {
+            color = redColormap(vPosition);
+          } else if(uColormap == 4) {
+            color = rainbowColormap(vPosition);
+          } else {
+            color = defaultColormap(vPosition);
+          }
+          fragColor = vec4(color, 1.0);
+        }
       `;
 
-    // Coordinate system widget shaders (unchanged)
+    // Coordinate system widget shaders
     const csVsSource = `#version 300 es
-      in vec3 aPosition;
-      in vec3 aColor;
-      uniform mat4 uProjectionMatrix;
-      uniform mat4 uModelViewMatrix;
-      out vec3 vColor;
-      void main() {
-        gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
-        vColor = aColor;
-      }
+        in vec3 aPosition;
+        in vec3 aColor;
+        uniform mat4 uProjectionMatrix;
+        uniform mat4 uModelViewMatrix;
+        out vec3 vColor;
+        void main() {
+          gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+          vColor = aColor;
+        }
       `;
     const csFsSource = `#version 300 es
-      precision mediump float;
-      in vec3 vColor;
-      out vec4 fragColor;
-      void main() {
-        fragColor = vec4(vColor, 1.0);
-      }
+        precision mediump float;
+        in vec3 vColor;
+        out vec4 fragColor;
+        void main() {
+          fragColor = vec4(vColor, 1.0);
+        }
       `;
 
-    // Initialize WebGL context (try WebGL2 first)
-    const initWebGL = (canvas) => {
-      let gl = canvas.getContext('webgl2');
-      if (!gl) {
-        gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-        if (!gl) {
-          alert('Unable to initialize WebGL. Your browser may not support it.');
+    /*******************************
+     * Attractor Generators
+     *******************************/
+    class AttractorGenerator {
+      constructor(params) {
+        this.params = params;
+      }
+      generatePoints() {
+        throw new Error("Method not implemented.");
+      }
+    }
+    class LorenzAttractor extends AttractorGenerator {
+      generatePoints() {
+        const { sigma = 10, rho = 28, beta = 8 / 3, dt = 0.01, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
+        let { x, y, z } = initial;
+        const points = [];
+        for (let i = 0; i < numPoints; i++) {
+          const dx = sigma * (y - x);
+          const dy = x * (rho - z) - y;
+          const dz = x * y - beta * z;
+          x += dx * dt;
+          y += dy * dt;
+          z += dz * dt;
+          points.push(x, y, z);
         }
+        return new Float32Array(points);
       }
-      return gl;
-    };
-
-    // Compile a shader from source
-    const loadShader = (gl, type, source) => {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        alert('Error compiling shader: ' + gl.getShaderInfoLog(shader));
-        gl.deleteShader(shader);
-        return null;
+    }
+    class RosslerAttractor extends AttractorGenerator {
+      generatePoints() {
+        const { a = 0.2, b = 0.2, c = 5.7, dt = 0.02, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
+        let { x, y, z } = initial;
+        const points = [];
+        for (let i = 0; i < numPoints; i++) {
+          const dx = -y - z;
+          const dy = x + a * y;
+          const dz = b + z * (x - c);
+          x += dx * dt;
+          y += dy * dt;
+          z += dz * dt;
+          points.push(x, y, z);
+        }
+        return new Float32Array(points);
       }
-      return shader;
-    };
+    }
 
-    // Initialize shader program
-    const initShaderProgram = (gl, vsSource, fsSource) => {
-      const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-      const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-      const shaderProgram = gl.createProgram();
-      gl.attachShader(shaderProgram, vertexShader);
-      gl.attachShader(shaderProgram, fragmentShader);
-      gl.linkProgram(shaderProgram);
-      if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-        alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
-        return null;
+    /*******************************
+     * Camera
+     *******************************/
+    class Camera {
+      constructor() {
+        this.angleX = 0;
+        this.angleY = Math.PI / 4;
+        this.distance = 80;
+        this.center = [0, 0, 0];
       }
-      return shaderProgram;
-    };
-
-    // Generate attractor points
-    const generateLorenzPoints = ({
-      sigma = 10,
-      rho = 28,
-      beta = 8 / 3,
-      dt = 0.01,
-      numPoints = 10000,
-      initial = { x: 0.1, y: 0, z: 0 }
-    } = {}) => {
-      const points = [];
-      let { x, y, z } = initial;
-      for (let i = 0; i < numPoints; i++) {
-        const dx = sigma * (y - x);
-        const dy = x * (rho - z) - y;
-        const dz = x * y - beta * z;
-        x += dx * dt;
-        y += dy * dt;
-        z += dz * dt;
-        points.push(x, y, z);
+      rotate(deltaX, deltaY) {
+        this.angleX += deltaX * 0.005;
+        this.angleY += deltaY * 0.005;
+        this.angleY = Math.min(Math.max(this.angleY, 0.1), Math.PI - 0.1);
       }
-      return new Float32Array(points);
-    };
-
-    const generateRosslerPoints = ({
-      a = 0.2,
-      b = 0.2,
-      c = 5.7,
-      dt = 0.02,
-      numPoints = 10000,
-      initial = { x: 0.1, y: 0, z: 0 }
-    } = {}) => {
-      const points = [];
-      let { x, y, z } = initial;
-      for (let i = 0; i < numPoints; i++) {
-        const dx = -y - z;
-        const dy = x + a * y;
-        const dz = b + z * (x - c);
-        x += dx * dt;
-        y += dy * dt;
-        z += dz * dt;
-        points.push(x, y, z);
+      zoom(deltaY) {
+        this.distance += deltaY * 0.05;
+        this.distance = Math.max(this.distance, 10);
       }
-      return new Float32Array(points);
-    };
-
-    // Global variables to hold attractor data and center.
-    let currentPositions = null;
-    let attractorCenter = [0, 0, 0];
-
-    // Initialize buffers for attractor points and store positions for later centering.
-    const initBuffers = (gl, positions) => {
-      currentPositions = positions; // store the positions array globally
-      const positionBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
-      return {
-        position: positionBuffer,
-        numPoints: positions.length / 3
-      };
-    };
-
-    // Create buffers for the coordinate system widget (three axes)
-    const createCSBuffers = (gl) => {
-      // Vertices for axes: each axis from (0,0,0) to (1,0,0), etc.
-      const vertices = new Float32Array([
-        0, 0, 0, 1, 0, 0,  // X axis
-        0, 0, 0, 0, 1, 0,  // Y axis
-        0, 0, 0, 0, 0, 1   // Z axis
-      ]);
-      // Colors for each vertex (red for X, green for Y, blue for Z)
-      const colors = new Float32Array([
-        1, 0, 0, 1, 0, 0,  // Red X
-        0, 1, 0, 0, 1, 0,  // Green Y
-        0, 0, 1, 0, 0, 1   // Blue Z
-      ]);
-      const vertexBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-      const colorBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
-      return {
-        vertex: vertexBuffer,
-        color: colorBuffer,
-        numVertices: vertices.length / 3
-      };
-    };
-
-    // Global camera parameters
-    let cameraAngleX = 0;
-    let cameraAngleY = Math.PI / 4;
-    let cameraDistance = 80;
-
-    // Mouse interaction state
-    let isDragging = false;
-    let lastMouseX = 0;
-    let lastMouseY = 0;
-
-    // Set up camera controls
-    const setupCameraControls = (canvas) => {
-      canvas.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-        canvas.style.cursor = 'grabbing';
-      });
-      canvas.addEventListener('mouseup', () => {
-        isDragging = false;
-        canvas.style.cursor = 'grab';
-      });
-      canvas.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        const deltaX = e.clientX - lastMouseX;
-        const deltaY = e.clientY - lastMouseY;
-        cameraAngleX += deltaX * 0.005;
-        cameraAngleY += deltaY * 0.005;
-        cameraAngleY = Math.min(Math.max(cameraAngleY, 0.1), Math.PI - 0.1);
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-      });
-      canvas.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        cameraDistance += e.deltaY * 0.05;
-        cameraDistance = Math.max(cameraDistance, 10);
-      });
-    };
-
-    // Global state for colormap selection.
-    // We map UI string values to integer IDs that the shader uses:
-    // 0: default, 1: blue, 2: green, 3: red, 4: rainbow
-    let currentColormap = 0;
-    const colormapMap = {
-      'default': 0,
-      'blue': 1,
-      'green': 2,
-      'red': 3,
-      'rainbow': 4
-    };
-
-    // Draw the main attractor scene (using position-based color)
-    const drawScene = (gl, programInfo, buffers, drawCount) => {
-      gl.clearColor(0.0, 0.0, 0.0, 1.0);
-      gl.clearDepth(1.0);
-      gl.enable(gl.DEPTH_TEST);
-      gl.depthFunc(gl.LEQUAL);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-      const fieldOfView = (45 * Math.PI) / 180;
-      const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-      const zNear = 0.1;
-      const zFar = 1000.0;
-      const projectionMatrix = mat4.create();
-      mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
-
-      // Compute camera position using spherical coordinates.
-      // Note that we now use "attractorCenter" as the look-at target.
-      const eye = [
-        cameraDistance * Math.sin(cameraAngleY) * Math.cos(cameraAngleX) + attractorCenter[0],
-        cameraDistance * Math.cos(cameraAngleY) + attractorCenter[1],
-        cameraDistance * Math.sin(cameraAngleY) * Math.sin(cameraAngleX) + attractorCenter[2]
-      ];
-      const center = attractorCenter;
-      const up = [0, 1, 0];
-      const modelViewMatrix = mat4.create();
-      mat4.lookAt(modelViewMatrix, eye, center, up);
-
-      // Bind main attractor position buffer and configure attribute
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-      gl.vertexAttribPointer(programInfo.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(programInfo.attribLocations.aPosition);
-
-      gl.useProgram(programInfo.program);
-      gl.uniformMatrix4fv(programInfo.uniformLocations.uProjectionMatrix, false, projectionMatrix);
-      gl.uniformMatrix4fv(programInfo.uniformLocations.uModelViewMatrix, false, modelViewMatrix);
-      // Pass the colormap ID to the shader
-      gl.uniform1i(programInfo.uniformLocations.uColormap, currentColormap);
-
-      const count = Math.min(drawCount, buffers.numPoints);
-      gl.drawArrays(gl.LINE_STRIP, 0, count);
-    };
-
-    // Draw the coordinate system widget in the top-right corner
-    const drawCoordinateSystem = (gl, csProgramInfo, csBuffers) => {
-      // Save current viewport dimensions
-      const canvasWidth = gl.canvas.width;
-      const canvasHeight = gl.canvas.height;
-      // Define widget size (e.g., 150x150 pixels)
-      const widgetSize = 150;
-      gl.viewport(canvasWidth - widgetSize - 10, 10, widgetSize, widgetSize);
-
-      // Use an orthographic projection
-      const projMatrix = mat4.create();
-      mat4.ortho(projMatrix, -1, 1, -1, 1, -1, 1);
-
-      // Create a model view matrix that reflects the current camera rotation.
-      const mvMatrix = mat4.create();
-      mat4.rotate(mvMatrix, mvMatrix, cameraAngleY, [1, 0, 0]);
-      mat4.rotate(mvMatrix, mvMatrix, cameraAngleX, [0, 1, 0]);
-
-      gl.useProgram(csProgramInfo.program);
-      gl.uniformMatrix4fv(csProgramInfo.uniformLocations.uProjectionMatrix, false, projMatrix);
-      gl.uniformMatrix4fv(csProgramInfo.uniformLocations.uModelViewMatrix, false, mvMatrix);
-
-      // Bind vertex positions for the widget
-      gl.bindBuffer(gl.ARRAY_BUFFER, csBuffers.vertex);
-      gl.vertexAttribPointer(csProgramInfo.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(csProgramInfo.attribLocations.aPosition);
-
-      // Bind vertex colors for the widget
-      gl.bindBuffer(gl.ARRAY_BUFFER, csBuffers.color);
-      gl.vertexAttribPointer(csProgramInfo.attribLocations.aColor, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(csProgramInfo.attribLocations.aColor);
-
-      // Draw axes as lines (each axis is two vertices)
-      gl.drawArrays(gl.LINES, 0, csBuffers.numVertices);
-
-      // Reset viewport to full canvas for next frame
-      gl.viewport(0, 0, canvasWidth, canvasHeight);
-    };
-
-    // Global state for attractor rendering
-    let currentAttractor = 'lorenz';
-    let buffers = null;
-    let currentDrawCount = 0;
-    let drawIncrement = 5;
-    let totalPoints = 10000;
-    let gl = null;
-
-    // Update attractor data based on selection
-    const updateAttractor = (attractorType) => {
-      const params = { numPoints: totalPoints };
-      const positions =
-        attractorType === 'lorenz'
-          ? generateLorenzPoints(params)
-          : generateRosslerPoints(params);
-      buffers = initBuffers(gl, positions);
-      currentDrawCount = 0;
-      // Reset attractor center to [0, 0, 0] until user re-centers.
-      attractorCenter = [0, 0, 0];
-    };
-
-    // Recenter and fit the attractor in the viewport by computing its bounding sphere.
-    const recenterView = () => {
-      if (!currentPositions) return;
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-      for (let i = 0; i < currentPositions.length; i += 3) {
-        const x = currentPositions[i];
-        const y = currentPositions[i + 1];
-        const z = currentPositions[i + 2];
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (z < minZ) minZ = z;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-        if (z > maxZ) maxZ = z;
+      getViewMatrix() {
+        const viewMatrix = mat4.create();
+        const eye = [
+          this.distance * Math.sin(this.angleY) * Math.cos(this.angleX) + this.center[0],
+          this.distance * Math.cos(this.angleY) + this.center[1],
+          this.distance * Math.sin(this.angleY) * Math.sin(this.angleX) + this.center[2],
+        ];
+        mat4.lookAt(viewMatrix, eye, this.center, [0, 1, 0]);
+        return viewMatrix;
       }
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      const centerZ = (minZ + maxZ) / 2;
-      attractorCenter = [centerX, centerY, centerZ];
-      // Compute the maximum distance from the center to any point
-      let radius = 0;
-      for (let i = 0; i < currentPositions.length; i += 3) {
-        const dx = currentPositions[i] - centerX;
-        const dy = currentPositions[i + 1] - centerY;
-        const dz = currentPositions[i + 2] - centerZ;
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (dist > radius) radius = dist;
+      setCenter(center) {
+        this.center = center;
+      }
+    }
+
+    /*******************************
+     * ShaderProgram Wrapper
+     *******************************/
+    class ShaderProgram {
+      constructor(gl, vsSource, fsSource, attribNames, uniformNames) {
+        this.gl = gl;
+        this.program = GLUtil.initShaderProgram(gl, vsSource, fsSource);
+        this.attribLocations = {};
+        this.uniformLocations = {};
+        attribNames.forEach((name) => {
+          this.attribLocations[name] = gl.getAttribLocation(this.program, name);
+        });
+        uniformNames.forEach((name) => {
+          this.uniformLocations[name] = gl.getUniformLocation(this.program, name);
+        });
+      }
+    }
+
+    /*******************************
+     * Renderer for Attractor Scene
+     *******************************/
+    class Renderer {
+      constructor(gl, shaderProgram, camera) {
+        this.gl = gl;
+        this.shaderProgram = shaderProgram;
+        this.camera = camera;
+        this.buffers = null;
+      }
+      initBuffers(positions) {
+        this.buffers = {};
+        this.buffers.position = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.position);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, positions, this.gl.STATIC_DRAW);
+        this.buffers.numPoints = positions.length / 3;
+        return this.buffers;
+      }
+      draw(buffers, drawCount, colormap) {
+        const gl = this.gl;
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        const fieldOfView = (45 * Math.PI) / 180;
+        const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+        const zNear = 0.1;
+        const zFar = 1000.0;
+        const projectionMatrix = mat4.create();
+        mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
+
+        const modelViewMatrix = this.camera.getViewMatrix();
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+        gl.vertexAttribPointer(this.shaderProgram.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(this.shaderProgram.attribLocations.aPosition);
+
+        gl.useProgram(this.shaderProgram.program);
+        gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uProjectionMatrix, false, projectionMatrix);
+        gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uModelViewMatrix, false, modelViewMatrix);
+        gl.uniform1i(this.shaderProgram.uniformLocations.uColormap, colormap);
+
+        const count = Math.min(drawCount, buffers.numPoints);
+        gl.drawArrays(gl.LINE_STRIP, 0, count);
+      }
+    }
+
+    /*******************************
+     * Coordinate System Renderer
+     *******************************/
+    class CoordinateSystemRenderer {
+      constructor(gl, shaderProgram, camera) {
+        this.gl = gl;
+        this.shaderProgram = shaderProgram;
+        this.camera = camera;
+        this.buffers = this.initBuffers();
+      }
+      initBuffers() {
+        const gl = this.gl;
+        const vertices = new Float32Array([
+          0, 0, 0, 1, 0, 0, // X axis
+          0, 0, 0, 0, 1, 0, // Y axis
+          0, 0, 0, 0, 0, 1, // Z axis
+        ]);
+        const colors = new Float32Array([
+          1, 0, 0, 1, 0, 0,
+          0, 1, 0, 0, 1, 0,
+          0, 0, 1, 0, 0, 1,
+        ]);
+        const vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+        const colorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+        return {
+          vertex: vertexBuffer,
+          color: colorBuffer,
+          numVertices: vertices.length / 3,
+        };
+      }
+      draw() {
+        const gl = this.gl;
+        const canvasWidth = gl.canvas.width;
+        const canvasHeight = gl.canvas.height;
+        const widgetSize = 150;
+        gl.viewport(canvasWidth - widgetSize - 10, 10, widgetSize, widgetSize);
+
+        const projMatrix = mat4.create();
+        mat4.ortho(projMatrix, -1, 1, -1, 1, -1, 1);
+
+        const mvMatrix = mat4.create();
+        mat4.rotate(mvMatrix, mvMatrix, this.camera.angleY, [1, 0, 0]);
+        mat4.rotate(mvMatrix, mvMatrix, this.camera.angleX, [0, 1, 0]);
+
+        gl.useProgram(this.shaderProgram.program);
+        gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uProjectionMatrix, false, projMatrix);
+        gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uModelViewMatrix, false, mvMatrix);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.vertex);
+        gl.vertexAttribPointer(this.shaderProgram.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(this.shaderProgram.attribLocations.aPosition);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.color);
+        gl.vertexAttribPointer(this.shaderProgram.attribLocations.aColor, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(this.shaderProgram.attribLocations.aColor);
+
+        gl.drawArrays(gl.LINES, 0, this.buffers.numVertices);
+        gl.viewport(0, 0, canvasWidth, canvasHeight);
+      }
+      }
       }
       // Set camera distance to roughly twice the radius for a good fit.
       cameraDistance = radius * 2;
@@ -448,99 +450,213 @@
       gl = initWebGL(canvas);
       if (!gl) return;
       setupCameraControls(canvas);
-
-      // Main attractor shader program and info
-      const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
-      const programInfo = {
-        program: shaderProgram,
-        attribLocations: {
-          aPosition: gl.getAttribLocation(shaderProgram, 'aPosition')
-        },
-        uniformLocations: {
-          uProjectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
-          uModelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
-          uColormap: gl.getUniformLocation(shaderProgram, 'uColormap')
-        }
-      };
-
-      // Coordinate system shader program and buffers
-      const csShaderProgram = initShaderProgram(gl, csVsSource, csFsSource);
-      const csProgramInfo = {
-        program: csShaderProgram,
-        attribLocations: {
-          aPosition: gl.getAttribLocation(csShaderProgram, 'aPosition'),
-          aColor: gl.getAttribLocation(csShaderProgram, 'aColor')
-        },
-        uniformLocations: {
-          uProjectionMatrix: gl.getUniformLocation(csShaderProgram, 'uProjectionMatrix'),
-          uModelViewMatrix: gl.getUniformLocation(csShaderProgram, 'uModelViewMatrix')
-        }
-      };
-      const csBuffers = createCSBuffers(gl);
-
-      // UI Elements
-      const attractorSelect = document.getElementById('attractorSelect');
-      const speedSlider = document.getElementById('speedSlider');
-      const speedValue = document.getElementById('speedValue');
-      const pointsInput = document.getElementById('pointsInput');
-      const resetButton = document.getElementById('resetButton');
-      const colormapSelect = document.getElementById('colormapSelect');
-      const centerButton = document.getElementById('centerButton');
-
-      speedSlider.addEventListener('input', (e) => {
-        drawIncrement = Number(e.target.value);
-        speedValue.textContent = e.target.value;
-      });
-
-      pointsInput.addEventListener('change', (e) => {
-        totalPoints = Number(e.target.value);
-        updateAttractor(currentAttractor);
-      });
-
-      attractorSelect.addEventListener('change', (e) => {
-        currentAttractor = e.target.value;
-        updateAttractor(currentAttractor);
-      });
-
-      // Update colormap based on the selection.
-      colormapSelect.addEventListener('change', (e) => {
-        const selected = e.target.value;
-        currentColormap = colormapMap[selected] || 0;
-      });
-
-      // Center / Fit Attractor button
-      centerButton.addEventListener('click', () => {
-        recenterView();
-      });
-
-      resetButton.addEventListener('click', () => {
-        updateAttractor(currentAttractor);
-      });
-
-      updateAttractor(currentAttractor);
-
-      // Resize canvas to fill window
-      const resizeCanvas = () => {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-      };
-      window.addEventListener('resize', resizeCanvas);
-      resizeCanvas();
-
-      // Animation loop: draw main scene and then coordinate widget.
-      const animate = () => {
-        if (currentDrawCount < buffers.numPoints) {
-          currentDrawCount += drawIncrement;
-        }
-        drawScene(gl, programInfo, buffers, currentDrawCount);
-        drawCoordinateSystem(gl, csProgramInfo, csBuffers);
-        requestAnimationFrame(animate);
-      };
-      animate();
+    }
+      // Set camera distance to roughly twice the radius for a good fit.
+      cameraDistance = radius * 2;
     };
 
-    window.addEventListener('load', main);
+    // Main function to initialize the app
+    const main = () => {
+      const canvas = document.getElementById('glcanvas');
+      gl = initWebGL(canvas);
+      if (!gl) return;
+      setupCameraControls(canvas);
+
+    /*******************************
+     * UI Controller
+     *******************************/
+    class UIController {
+      constructor(app) {
+        this.app = app;
+        this.colormapMap = {
+          default: 0,
+          blue: 1,
+          green: 2,
+          red: 3,
+          rainbow: 4,
+        };
+      }
+      init() {
+        const attractorSelect = document.getElementById("attractorSelect");
+        const speedSlider = document.getElementById("speedSlider");
+        const speedValue = document.getElementById("speedValue");
+        const pointsInput = document.getElementById("pointsInput");
+        const resetButton = document.getElementById("resetButton");
+        const colormapSelect = document.getElementById("colormapSelect");
+        const centerButton = document.getElementById("centerButton");
+
+        speedSlider.addEventListener("input", (e) => {
+          this.app.drawIncrement = Number(e.target.value);
+          speedValue.textContent = e.target.value;
+        });
+        pointsInput.addEventListener("change", (e) => {
+          this.app.totalPoints = Number(e.target.value);
+          this.app.updateAttractor(this.app.currentAttractorType);
+        });
+        attractorSelect.addEventListener("change", (e) => {
+          this.app.updateAttractor(e.target.value);
+        });
+        colormapSelect.addEventListener("change", (e) => {
+          this.app.currentColormap = this.colormapMap[e.target.value] || 0;
+        });
+        centerButton.addEventListener("click", () => {
+          this.app.recenterView();
+        });
+        resetButton.addEventListener("click", () => {
+          this.app.updateAttractor(this.app.currentAttractorType);
+        });
+      }
+    }
+
+    /*******************************
+     * Application (Orchestrator)
+     *******************************/
+    class Application {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.gl = GLUtil.initWebGL(canvas);
+        if (!this.gl) return;
+        this.camera = new Camera();
+        this.currentDrawCount = 0;
+        this.drawIncrement = 5;
+        this.totalPoints = 10000;
+        this.currentAttractorType = "lorenz";
+        // Create attractor generators. (Easily extended with additional types.)
+        this.attractorGenerators = {
+          lorenz: new LorenzAttractor({ numPoints: this.totalPoints }),
+          rossler: new RosslerAttractor({ numPoints: this.totalPoints }),
+        };
+        this.currentColormap = 0;
+      }
+      init() {
+        // Initialize shader programs
+        this.attractorShader = new ShaderProgram(
+          this.gl,
+          vsSource,
+          fsSource,
+          ["aPosition"],
+          ["uProjectionMatrix", "uModelViewMatrix", "uColormap"]
+        );
+        this.csShader = new ShaderProgram(
+          this.gl,
+          csVsSource,
+          csFsSource,
+          ["aPosition", "aColor"],
+          ["uProjectionMatrix", "uModelViewMatrix"]
+        );
+
+        // Create renderers
+        this.renderer = new Renderer(this.gl, this.attractorShader, this.camera);
+        this.csRenderer = new CoordinateSystemRenderer(this.gl, this.csShader, this.camera);
+
+        // Setup UI controls
+        this.uiController = new UIController(this);
+        this.uiController.init();
+
+        // Initialize attractor data
+        this.updateAttractor(this.currentAttractorType);
+
+        // Set up camera mouse controls
+        this.setupCameraControls();
+
+        // Resize canvas to fill window
+        this.resizeCanvas();
+        window.addEventListener("resize", () => this.resizeCanvas());
+
+        // Start the animation loop
+        this.animate();
+      }
+      updateAttractor(type) {
+        this.currentAttractorType = type;
+        const generator = this.attractorGenerators[type];
+        generator.params.numPoints = this.totalPoints;
+        const positions = generator.generatePoints();
+        this.renderer.initBuffers(positions);
+        this.currentDrawCount = 0;
+        // Reset camera center (will be updated if recenter is triggered)
+        this.camera.setCenter([0, 0, 0]);
+        this.currentPositions = positions;
+      }
+      recenterView() {
+        if (!this.currentPositions) return;
+        let minX = Infinity,
+          minY = Infinity,
+          minZ = Infinity;
+        let maxX = -Infinity,
+          maxY = -Infinity,
+          maxZ = -Infinity;
+        for (let i = 0; i < this.currentPositions.length; i += 3) {
+          const x = this.currentPositions[i];
+          const y = this.currentPositions[i + 1];
+          const z = this.currentPositions[i + 2];
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          minZ = Math.min(minZ, z);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+          maxZ = Math.max(maxZ, z);
+        }
+        const center = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+        this.camera.setCenter(center);
+        let radius = 0;
+        for (let i = 0; i < this.currentPositions.length; i += 3) {
+          const dx = this.currentPositions[i] - center[0];
+          const dy = this.currentPositions[i + 1] - center[1];
+          const dz = this.currentPositions[i + 2] - center[2];
+          radius = Math.max(radius, Math.sqrt(dx * dx + dy * dy + dz * dz));
+        }
+        this.camera.distance = radius * 2;
+      }
+      setupCameraControls() {
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        this.canvas.addEventListener("mousedown", (e) => {
+          isDragging = true;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+          this.canvas.style.cursor = "grabbing";
+        });
+        this.canvas.addEventListener("mouseup", () => {
+          isDragging = false;
+          this.canvas.style.cursor = "grab";
+        });
+        this.canvas.addEventListener("mousemove", (e) => {
+          if (!isDragging) return;
+          const deltaX = e.clientX - lastMouseX;
+          const deltaY = e.clientY - lastMouseY;
+          this.camera.rotate(deltaX, deltaY);
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+        });
+        this.canvas.addEventListener("wheel", (e) => {
+          e.preventDefault();
+          this.camera.zoom(e.deltaY);
+        });
+      }
+      resizeCanvas() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      }
+      animate() {
+        if (this.renderer.buffers && this.currentDrawCount < this.renderer.buffers.numPoints) {
+          this.currentDrawCount += this.drawIncrement;
+        }
+        this.renderer.draw(this.renderer.buffers, this.currentDrawCount, this.currentColormap);
+        this.csRenderer.draw();
+        requestAnimationFrame(() => this.animate());
+      }
+    }
+
+    /*******************************
+     * Application Entry Point
+     *******************************/
+    window.addEventListener("load", () => {
+      const canvas = document.getElementById("glcanvas");
+      const app = new Application(canvas);
+      app.init();
+    });
   </script>
 </head>
 
@@ -551,6 +667,7 @@
       <option value="lorenz">Lorenz</option>
       <option value="rossler">Rössler</option>
     </select>
+
     <label for="colormapSelect">Select Color Map:</label>
     <select id="colormapSelect">
       <option value="default">Default</option>
@@ -559,11 +676,14 @@
       <option value="red">Red</option>
       <option value="rainbow">Rainbow</option>
     </select>
+
     <label for="speedSlider">Animation Speed (points per frame):</label>
     <input type="range" id="speedSlider" min="1" max="20" value="5" />
     <span id="speedValue">5</span>
+
     <label for="pointsInput">Total Points:</label>
     <input type="number" id="pointsInput" value="10000" min="1000" step="1000" />
+
     <button id="resetButton">Reset / Restart</button>
     <button id="centerButton">Center / Fit Attractor</button>
   </div>
