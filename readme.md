@@ -17,7 +17,24 @@ cd strange-attractors
 - Click the ▶️ Run button to render the attractor.
 
 ## Implemented Attractors
-#### Polynomial strange attractors
+#### WebGL
+Explore and experiment with the WebGL version live in your browser: [here!](https://rawcdn.githack.com/ThibautBaissac/strange-attractors/refs/heads/main/src/webgl/index.html)
+- Arneodo
+- Bouali
+- Bruke-Shaw
+- Chen
+- Dadras
+- Fourwing
+- Halvorsen
+- Lorenz
+- Rabinovich-Fabrikant
+- Rössler
+- Thomas
+- Sprott
+![Thomas Attractor](media/webgl_thomas.png)
+
+#### Processing
+##### Polynomial strange attractors
 This **Processing** sketch simulates two different strange attractors using a polynomial function approach.
 
 1.  Poisson-Saturne Attractor
