@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>Animated StrangeAttractors</title>
+  <title>Animated Strange Attractors</title>
   <style>
     /* CSS Variables for easy theming */
     :root {
@@ -165,43 +165,61 @@
         uniform int uColormap;
         out vec4 fragColor;
 
-      vec3 defaultColormap(vec3 pos) {
-      vec3 defaultColormap(vec3 pos) {
-        // Simple mapping: use sine functions for each component, normalized to [0,1]
-        vec3 defaultColormap(vec3 pos) {
-        // Simple mapping: use sine functions for each component, normalized to [0,1]
-          return (sin(pos) + 1.0) * 0.5;
+        float smoothStepCustom(float edge0, float edge1, float x) {
+          float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+          return t * t * (3.0 - 2.0 * t); // smoother step function
         }
-        vec3 blueColormap(vec3 pos) {
-          return vec3(0.0, (sin(pos.y) + 1.0) * 0.5, 1.0);
+
+        // Viridis: from dark purple-blue to bright yellow
+        vec3 viridisColormap(float t) {
+          // Use sine functions offset by different phases for each channel.
+          return vec3(
+            0.5 + 0.5 * sin(6.2831 * t + 0.0),
+            0.5 + 0.5 * sin(6.2831 * t + 2.094),
+            0.5 + 0.5 * sin(6.2831 * t + 4.188)
+          );
         }
-        vec3 greenColormap(vec3 pos) {
-          return vec3((sin(pos.x) + 1.0) * 0.5, 1.0, (sin(pos.z) + 1.0) * 0.5);
+
+        // Parula-inspired sine colormap
+        vec3 parulaSinColormap(float t) {
+          // Using custom phase offsets to roughly evoke Parula's dark blue-to-greenish-yellow transition.
+          float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.5);
+          float green = 0.5 + 0.5 * sin(6.2831 * t + 1.2);
+          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
+          return vec3(red, green, blue);
         }
-        vec3 redColormap(vec3 pos) {
-          return vec3(1.0, (sin(pos.y) + 1.0) * 0.5, (sin(pos.z) + 1.0) * 0.5);
+
+        // Plasma-inspired sine colormap
+        vec3 plasmaSinColormap(float t) {
+          // Adjusting the phase shifts to produce a vivid, dramatic hue shift reminiscent of Plasma.
+          float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
+          float green = 0.5 + 0.5 * sin(6.2831 * t + 0.8);
+          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 1.6);
+          return vec3(red, green, blue);
         }
-        vec3 rainbowColormap(vec3 pos) {
-          float r = (sin(pos.x) + 1.0) * 0.5;
-          float g = (sin(pos.y + 1.0) + 1.0) * 0.5;
-          float b = (sin(pos.z + 2.0) + 1.0) * 0.5;
-          return vec3(r, g, b);
+
+        // Thermal-inspired sine colormap
+        vec3 thermalSinColormap(float t) {
+          // Using a different set of phase offsets to emphasize the transition from cool blues to warm reds.
+          float red   = 0.5 + 0.5 * sin(6.2831 * t + 1.0);
+          float green = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
+          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
+          return vec3(red, green, blue);
         }
 
         void main() {
+          float t = fract(vPosition.z * 0.1);
           vec3 color;
           if(uColormap == 0) {
-            color = defaultColormap(vPosition);
+            color = viridisColormap(t);  // Keep Viridis as is, or create a sine-based version similarly.
           } else if(uColormap == 1) {
-            color = blueColormap(vPosition);
+            color = parulaSinColormap(t);
           } else if(uColormap == 2) {
-            color = greenColormap(vPosition);
+            color = plasmaSinColormap(t);
           } else if(uColormap == 3) {
-            color = redColormap(vPosition);
-          } else if(uColormap == 4) {
-            color = rainbowColormap(vPosition);
+            color = thermalSinColormap(t);
           } else {
-            color = defaultColormap(vPosition);
+            color = viridisColormap(t);
           }
           fragColor = vec4(color, 1.0);
         }
@@ -229,7 +247,7 @@
       `;
 
     /*******************************
-     * Attractor Generators
+     * Attractor Generators (SRP)
      *******************************/
     class AttractorGenerator {
       constructor(params) {
@@ -275,7 +293,7 @@
     }
 
     /*******************************
-     * Camera
+     * Camera (SRP & DIP)
      *******************************/
     class Camera {
       constructor() {
@@ -309,7 +327,7 @@
     }
 
     /*******************************
-     * ShaderProgram Wrapper
+     * ShaderProgram Wrapper (SRP)
      *******************************/
     class ShaderProgram {
       constructor(gl, vsSource, fsSource, attribNames, uniformNames) {
@@ -327,7 +345,7 @@
     }
 
     /*******************************
-     * Renderer for Attractor Scene
+     * Renderer for Attractor Scene (SRP)
      *******************************/
     class Renderer {
       constructor(gl, shaderProgram, camera) {
@@ -376,7 +394,7 @@
     }
 
     /*******************************
-     * Coordinate System Renderer
+     * Coordinate System Renderer (SRP)
      *******************************/
     class CoordinateSystemRenderer {
       constructor(gl, shaderProgram, camera) {
@@ -438,42 +456,19 @@
         gl.drawArrays(gl.LINES, 0, this.buffers.numVertices);
         gl.viewport(0, 0, canvasWidth, canvasHeight);
       }
-      }
-      }
-      // Set camera distance to roughly twice the radius for a good fit.
-      cameraDistance = radius * 2;
-    };
-
-    // Main function to initialize the app
-    const main = () => {
-      const canvas = document.getElementById('glcanvas');
-      gl = initWebGL(canvas);
-      if (!gl) return;
-      setupCameraControls(canvas);
     }
-      // Set camera distance to roughly twice the radius for a good fit.
-      cameraDistance = radius * 2;
-    };
-
-    // Main function to initialize the app
-    const main = () => {
-      const canvas = document.getElementById('glcanvas');
-      gl = initWebGL(canvas);
-      if (!gl) return;
-      setupCameraControls(canvas);
 
     /*******************************
-     * UI Controller
+     * UI Controller (SRP)
      *******************************/
     class UIController {
       constructor(app) {
         this.app = app;
         this.colormapMap = {
-          default: 0,
-          blue: 1,
-          green: 2,
-          red: 3,
-          rainbow: 4,
+          viridis: 0,
+          parula: 1,
+          plasma: 2,
+          thermal: 3,
         };
       }
       init() {
@@ -643,8 +638,18 @@
         if (this.renderer.buffers && this.currentDrawCount < this.renderer.buffers.numPoints) {
           this.currentDrawCount += this.drawIncrement;
         }
+
+        // Draw the attractor
         this.renderer.draw(this.renderer.buffers, this.currentDrawCount, this.currentColormap);
+        // Draw the coordinate system widget
         this.csRenderer.draw();
+
+        // Update the live point counter display
+        const pointCounter = document.getElementById("pointCounter");
+        if (pointCounter) {
+          pointCounter.textContent = this.currentDrawCount;
+        }
+
         requestAnimationFrame(() => this.animate());
       }
     }
@@ -670,19 +675,20 @@
 
     <label for="colormapSelect">Select Color Map:</label>
     <select id="colormapSelect">
-      <option value="default">Default</option>
-      <option value="blue">Blue</option>
-      <option value="green">Green</option>
-      <option value="red">Red</option>
-      <option value="rainbow">Rainbow</option>
+      <option value="viridis">Viridis</option>
+      <option value="parula">Parula</option>
+      <option value="plasma">Plasma</option>
+      <option value="thermal">Thermal</option>
     </select>
 
+
     <label for="speedSlider">Animation Speed (points per frame):</label>
-    <input type="range" id="speedSlider" min="1" max="20" value="5" />
+    <input type="range" id="speedSlider" min="1" max="100" value="5" />
     <span id="speedValue">5</span>
 
     <label for="pointsInput">Total Points:</label>
     <input type="number" id="pointsInput" value="10000" min="1000" step="1000" />
+    <span id="pointCounter" style="margin: 5px 0;">0</span>
 
     <button id="resetButton">Reset / Restart</button>
     <button id="centerButton">Center / Fit Attractor</button>
