@@ -8,10 +8,11 @@
     /* CSS Variables for easy theming */
     :root {
       --primary-color: #4a90e2;
-      --background-color: rgba(255, 255, 255, 0.75);
+      --background-color: rgba(255, 255, 255, 0.85);
       --text-color: #333;
       --border-radius: 12px;
       --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      --accent-color: #f0f0f0;
     }
 
     * {
@@ -34,15 +35,15 @@
 
     #ui {
       position: absolute;
-      top: 5px;
-      left: 5px;
+      top: 15px;
+      left: 15px;
       z-index: 100;
       background: var(--background-color);
-      padding: 15px;
+      padding: 20px;
       border-radius: var(--border-radius);
       box-shadow: var(--shadow);
       backdrop-filter: blur(8px);
-      max-width: 250px;
+      max-width: 280px;
     }
 
     /* Form elements styling */
@@ -50,39 +51,78 @@
       font-size: 0.9rem;
       margin-bottom: 5px;
       color: var(--text-color);
+      display: block;
     }
 
     #ui select,
-    #ui input[type="range"],
     #ui input[type="number"] {
       width: 100%;
       padding: 8px;
       margin-bottom: 10px;
       border: 1px solid #ccc;
-      border-radius: 4px;
+      border-radius: var(--border-radius);
       font-size: 0.9rem;
       background: #fff;
-      border-radius: var(--border-radius);
     }
 
-    #ui input[type="range"] {
-      padding: 0;
-    }
-
-    #ui span {
-      display: block;
-      font-size: 0.85rem;
-      text-align: right;
-      color: var(--text-color);
-      margin-top: -10px;
+    /* Custom range slider styling */
+    .range-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
       margin-bottom: 10px;
+    }
+
+    #speedSlider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #ddd;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    #speedSlider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--primary-color);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      transition: background 0.3s;
+    }
+
+    #speedSlider::-webkit-slider-thumb:hover {
+      background: #3a78c2;
+    }
+
+    #speedValue {
+      width: 40px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--text-color);
+    }
+
+    /* Styling the point counter */
+    #pointCounter {
+      display: inline-block;
+      background: var(--accent-color);
+      padding: 5px 10px;
+      border-radius: var(--border-radius);
+      font-size: 0.9rem;
+      color: var(--text-color);
+      text-align: center;
+      margin-bottom: 15px;
     }
 
     #ui button {
       width: 100%;
       padding: 10px;
       border: none;
-      border-radius: 50px;
+      border-radius: var(--border-radius);
       font-size: 0.9rem;
       cursor: pointer;
       transition: background 0.3s;
@@ -92,15 +132,23 @@
     }
 
     #ui button:hover {
-      background: darken(var(--primary-color), 10%);
+      background: #3a78c2;
     }
 
-    /* Last button without extra margin */
-    #ui button:last-of-type {
-      margin-bottom: 0;
+    /* Grouping for the XYZ buttons */
+    .xyz-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .xyz-group button {
+      flex: 1;
+      padding: 8px;
+      border-radius: 50px;
+      font-size: 0.9rem;
     }
   </style>
-  <!-- We use gl-matrix for matrix math -->
   <script type="module">
     import { mat4 } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.2/src/index.js';
 
@@ -147,7 +195,7 @@
     /*******************************
      * Shader Sources
      *******************************/
-    // Attractor shaders
+    // Updated Attractor shaders using point sprites with halo effect.
     const vsSource = `#version 300 es
         in vec3 aPosition;
         uniform mat4 uProjectionMatrix;
@@ -156,6 +204,7 @@
         void main() {
           vec4 pos = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
           gl_Position = pos;
+          gl_PointSize = 1.5; // Set the point sprite size here.
           vPosition = aPosition;
         }
       `;
@@ -167,40 +216,30 @@
 
         float smoothStepCustom(float edge0, float edge1, float x) {
           float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-          return t * t * (3.0 - 2.0 * t); // smoother step function
+          return t * t * (3.0 - 2.0 * t);
         }
 
-        // Viridis: from dark purple-blue to bright yellow
+        // Viridis-inspired colormap using sine functions.
         vec3 viridisColormap(float t) {
-          // Use sine functions offset by different phases for each channel.
           return vec3(
             0.5 + 0.5 * sin(6.2831 * t + 0.0),
             0.5 + 0.5 * sin(6.2831 * t + 2.094),
             0.5 + 0.5 * sin(6.2831 * t + 4.188)
           );
         }
-
-        // Parula-inspired sine colormap
         vec3 parulaSinColormap(float t) {
-          // Using custom phase offsets to roughly evoke Parula's dark blue-to-greenish-yellow transition.
           float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.5);
           float green = 0.5 + 0.5 * sin(6.2831 * t + 1.2);
           float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
           return vec3(red, green, blue);
         }
-
-        // Plasma-inspired sine colormap
         vec3 plasmaSinColormap(float t) {
-          // Adjusting the phase shifts to produce a vivid, dramatic hue shift reminiscent of Plasma.
           float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
           float green = 0.5 + 0.5 * sin(6.2831 * t + 0.8);
           float blue  = 0.5 + 0.5 * sin(6.2831 * t + 1.6);
           return vec3(red, green, blue);
         }
-
-        // Thermal-inspired sine colormap
         vec3 thermalSinColormap(float t) {
-          // Using a different set of phase offsets to emphasize the transition from cool blues to warm reds.
           float red   = 0.5 + 0.5 * sin(6.2831 * t + 1.0);
           float green = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
           float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
@@ -208,10 +247,15 @@
         }
 
         void main() {
+          // Create the halo effect using gl_PointCoord
+          vec2 coord = gl_PointCoord - vec2(0.5);
+          float dist = length(coord);
+          float alpha = 1.0 - smoothstep(0.45, 0.5, dist);
+
           float t = fract(vPosition.z * 0.1);
           vec3 color;
           if(uColormap == 0) {
-            color = viridisColormap(t);  // Keep Viridis as is, or create a sine-based version similarly.
+            color = viridisColormap(t);
           } else if(uColormap == 1) {
             color = parulaSinColormap(t);
           } else if(uColormap == 2) {
@@ -221,11 +265,11 @@
           } else {
             color = viridisColormap(t);
           }
-          fragColor = vec4(color, 1.0);
+          fragColor = vec4(color, alpha);
         }
       `;
 
-    // Coordinate system widget shaders
+    // Coordinate system widget shaders (unchanged)
     const csVsSource = `#version 300 es
         in vec3 aPosition;
         in vec3 aColor;
@@ -247,7 +291,7 @@
       `;
 
     /*******************************
-     * Attractor Generators (SRP)
+     * Attractor Generators
      *******************************/
     class AttractorGenerator {
       constructor(params) {
@@ -257,9 +301,77 @@
         throw new Error("Method not implemented.");
       }
     }
+    class AizawaAttractor extends AttractorGenerator {
+      generatePoints() {
+        const { a = 0.95, b = 0.7, c = 0.6, d = 3.5, e = 0.25, f = 0.1, dt = 0.01, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
+        let { x, y, z } = initial;
+        const points = [];
+        for (let i = 0; i < numPoints; i++) {
+          const dx = (z - b) * x - d * y;
+          const dy = d * x + (z - b) * y;
+          const dz = c + a * z - z ** 3 / 3 - x ** 2 + f * z * x ** 3;
+          x += dx * dt;
+          y += dy * dt;
+          z += dz * dt;
+          points.push(x, y, z);
+        }
+        return new Float32Array(points);
+      }
+    }
+    class ArneodoAttractor extends AttractorGenerator {
+      generatePoints() {
+        const { a = -5.5, b = 3.5, c = -1.0, dt = 0.001, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
+        let { x, y, z } = initial;
+        const points = [];
+        for (let i = 0; i < numPoints; i++) {
+          const dx = y;
+          const dy = z;
+          const dz = -a * x - b * y - z + c * x ** 3;
+          x += dx * dt;
+          y += dy * dt;
+          z += dz * dt;
+          points.push(x, y, z);
+        }
+        return new Float32Array(points);
+      }
+    }
+    class BoualiAttractor extends AttractorGenerator {
+      generatePoints() {
+        const { alpha = 3.0, beta = 2.2, gamma = 1.0, mu = 1.2, dt = 0.001, numPoints, initial = { x: 1.0, y: 1.0, z: 0 } } = this.params;
+        let { x, y, z } = initial;
+        const points = [];
+        for (let i = 0; i < numPoints; i++) {
+          const dx = alpha * x * (1 - y) - beta * z;
+          const dy = -gamma * y * (1 - x ** 2);
+          const dz = mu * x;
+          x += dx * dt;
+          y += dy * dt;
+          z += dz * dt;
+          points.push(x, y, z);
+        }
+        return new Float32Array(points);
+      }
+    }
+    class BrukeshawAttractor extends AttractorGenerator {
+      generatePoints() {
+        const { s = 10, v = 4.272, dt = 0.001, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
+        let { x, y, z } = initial;
+        const points = [];
+        for (let i = 0; i < numPoints; i++) {
+          const dx = -s * (x + y);
+          const dy = -y - s * x * z;
+          const dz = s * x * y + v;
+          x += dx * dt;
+          y += dy * dt;
+          z += dz * dt;
+          points.push(x, y, z);
+        }
+        return new Float32Array(points);
+      }
+    }
     class LorenzAttractor extends AttractorGenerator {
       generatePoints() {
-        const { sigma = 10, rho = 28, beta = 8 / 3, dt = 0.01, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
+        const { sigma = 10, rho = 28, beta = 8 / 3, dt = 0.001, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
         let { x, y, z } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
@@ -276,7 +388,7 @@
     }
     class RosslerAttractor extends AttractorGenerator {
       generatePoints() {
-        const { a = 0.2, b = 0.2, c = 5.7, dt = 0.02, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
+        const { a = 0.2, b = 0.2, c = 5.7, dt = 0.001, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
         let { x, y, z } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
@@ -293,7 +405,7 @@
     }
 
     /*******************************
-     * Camera (SRP & DIP)
+     * Camera
      *******************************/
     class Camera {
       constructor() {
@@ -327,7 +439,7 @@
     }
 
     /*******************************
-     * ShaderProgram Wrapper (SRP)
+     * ShaderProgram Wrapper
      *******************************/
     class ShaderProgram {
       constructor(gl, vsSource, fsSource, attribNames, uniformNames) {
@@ -345,7 +457,7 @@
     }
 
     /*******************************
-     * Renderer for Attractor Scene (SRP)
+     * Renderer for Attractor Scene
      *******************************/
     class Renderer {
       constructor(gl, shaderProgram, camera) {
@@ -389,12 +501,13 @@
         gl.uniform1i(this.shaderProgram.uniformLocations.uColormap, colormap);
 
         const count = Math.min(drawCount, buffers.numPoints);
-        gl.drawArrays(gl.LINE_STRIP, 0, count);
+        // Draw using points instead of a line strip
+        gl.drawArrays(gl.POINTS, 0, count);
       }
     }
 
     /*******************************
-     * Coordinate System Renderer (SRP)
+     * Coordinate System Renderer
      *******************************/
     class CoordinateSystemRenderer {
       constructor(gl, shaderProgram, camera) {
@@ -459,7 +572,7 @@
     }
 
     /*******************************
-     * UI Controller (SRP)
+     * UI Controller
      *******************************/
     class UIController {
       constructor(app) {
@@ -500,6 +613,21 @@
         resetButton.addEventListener("click", () => {
           this.app.updateAttractor(this.app.currentAttractorType);
         });
+
+        // --- New Buttons for preset plane views ---
+        const xyButton = document.getElementById("xyButton");
+        const yzButton = document.getElementById("yzButton");
+        const xzButton = document.getElementById("xzButton");
+
+        xyButton.addEventListener("click", () => {
+          this.app.setViewXY();
+        });
+        yzButton.addEventListener("click", () => {
+          this.app.setViewYZ();
+        });
+        xzButton.addEventListener("click", () => {
+          this.app.setViewXZ();
+        });
       }
     }
 
@@ -514,10 +642,14 @@
         this.camera = new Camera();
         this.currentDrawCount = 0;
         this.drawIncrement = 5;
-        this.totalPoints = 10000;
+        this.totalPoints = 100000;
         this.currentAttractorType = "lorenz";
-        // Create attractor generators. (Easily extended with additional types.)
+        // Create attractor generators.
         this.attractorGenerators = {
+          aizawa: new AizawaAttractor({ numPoints: this.totalPoints }),
+          arneodo: new ArneodoAttractor({ numPoints: this.totalPoints }),
+          bouali: new BoualiAttractor({ numPoints: this.totalPoints }),
+          brukeshaw: new BrukeshawAttractor({ numPoints: this.totalPoints }),
           lorenz: new LorenzAttractor({ numPoints: this.totalPoints }),
           rossler: new RosslerAttractor({ numPoints: this.totalPoints }),
         };
@@ -602,6 +734,21 @@
         }
         this.camera.distance = radius * 2;
       }
+      setViewXY() {
+        this.recenterView();
+        this.camera.angleY = Math.PI / 2;
+        this.camera.angleX = Math.PI / 2;
+      }
+      setViewYZ() {
+        this.recenterView();
+        this.camera.angleY = Math.PI / 2;
+        this.camera.angleX = 0;
+      }
+      setViewXZ() {
+        this.recenterView();
+        this.camera.angleY = 0.0001;
+        this.camera.angleX = 0;
+      }
       setupCameraControls() {
         let isDragging = false;
         let lastMouseX = 0;
@@ -638,18 +785,15 @@
         if (this.renderer.buffers && this.currentDrawCount < this.renderer.buffers.numPoints) {
           this.currentDrawCount += this.drawIncrement;
         }
-
-        // Draw the attractor
+        // Draw the attractor as point sprites with halo
         this.renderer.draw(this.renderer.buffers, this.currentDrawCount, this.currentColormap);
         // Draw the coordinate system widget
         this.csRenderer.draw();
-
         // Update the live point counter display
         const pointCounter = document.getElementById("pointCounter");
         if (pointCounter) {
           pointCounter.textContent = this.currentDrawCount;
         }
-
         requestAnimationFrame(() => this.animate());
       }
     }
@@ -669,7 +813,11 @@
   <div id="ui">
     <label for="attractorSelect">Select Attractor:</label>
     <select id="attractorSelect">
-      <option value="lorenz">Lorenz</option>
+      <option value="aizawa">Aizawa</option>
+      <option value="arneodo">Arneodo</option>
+      <option value="bouali">Bouali</option>
+      <option value="brukeshaw">Bruke-Shaw</option>
+      <option value="lorenz" selected="true">Lorenz</option>
       <option value="rossler">Rössler</option>
     </select>
 
@@ -681,17 +829,24 @@
       <option value="thermal">Thermal</option>
     </select>
 
-
-    <label for="speedSlider">Animation Speed (points per frame):</label>
-    <input type="range" id="speedSlider" min="1" max="100" value="5" />
-    <span id="speedValue">5</span>
+    <label for="speedSlider">Animation Speed:</label>
+    <div class="range-container">
+      <input type="range" id="speedSlider" min="1" max="1000" value="100" />
+      <span id="speedValue">100</span>
+    </div>
 
     <label for="pointsInput">Total Points:</label>
-    <input type="number" id="pointsInput" value="10000" min="1000" step="1000" />
-    <span id="pointCounter" style="margin: 5px 0;">0</span>
+    <input type="number" id="pointsInput" value="100000" min="1000" step="1000" />
+    <span id="pointCounter">0</span>
 
-    <button id="resetButton">Reset / Restart</button>
-    <button id="centerButton">Center / Fit Attractor</button>
+    <button id="resetButton">Restart</button>
+
+    <div class="xyz-group">
+      <button id="centerButton">Fit</button>
+      <button id="xyButton">XY</button>
+      <button id="yzButton">YZ</button>
+      <button id="xzButton">XZ</button>
+    </div>
   </div>
   <canvas id="glcanvas"></canvas>
 </body>
