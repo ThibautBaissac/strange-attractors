@@ -387,29 +387,13 @@
       constructor(params) {
         this.params = params;
       }
-      generatePoints() {
-        throw new Error("Method not implemented.");
-      }
-    }
-    class AizawaAttractor extends AttractorGenerator {
-      generatePoints() {
-        const {
-          a = 0.95, b = 0.7, c = 0.6, d = 3.5, e = 0.25, f = 0.1, dt = 0.01, numPoints, initial = {
-            x: 0.1,
-            y: 0,
-            z: 0
-          }
-        } = this.params;
-        let {
-          x,
-          y,
-          z
-        } = initial;
+      // Shared simulation loop
+      simulate(stepFunction) {
+        const { dt, numPoints, initial } = this.params;
+        let { x, y, z } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
-          const dx = (z - b) * x - d * y;
-          const dy = d * x + (z - b) * y;
-          const dz = c + a * z - z ** 3 / 3 - x ** 2 + f * z * x ** 3;
+          const { dx, dy, dz } = stepFunction(x, y, z);
           x += dx * dt;
           y += dy * dt;
           z += dz * dt;
@@ -418,139 +402,290 @@
         return new Float32Array(points);
       }
     }
+
+    class AizawaAttractor extends AttractorGenerator {
+      generatePoints() {
+        // Merge defaults with any passed parameters
+        const defaults = {
+          a: 0.95,
+          b: 0.7,
+          c: 0.6,
+          d: 3.5,
+          e: 0.25,
+          f: 0.1,
+          dt: 0.01,
+          numPoints: 1000,
+          initial: { x: 0.1, y: 0, z: 0 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { a, b, c, d, e, f } = this.params;
+          const dx = (z - b) * x - d * y;
+          const dy = d * x + (z - b) * y;
+          const dz = c + a * z - (z ** 3 / 3) - (x ** 2 + y ** 2) * (1 + e * z) + f * z * x ** 3;
+          return { dx, dy, dz };
+        });
+      }
+    }
+
     class ArneodoAttractor extends AttractorGenerator {
       generatePoints() {
-        const {
-          a = -5.5, b = 3.5, c = -1.0, dt = 0.001, numPoints, initial = {
-            x: 0.1,
-            y: 0,
-            z: 0
-          }
-        } = this.params;
-        let {
-          x,
-          y,
-          z
-        } = initial;
-        const points = [];
-        for (let i = 0; i < numPoints; i++) {
+        const defaults = {
+          a: -5.5,
+          b: 3.5,
+          c: -1.0,
+          dt: 0.001,
+          numPoints: 1000,
+          initial: { x: 0.1, y: 0, z: 0 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { a, b, c } = this.params;
           const dx = y;
           const dy = z;
           const dz = -a * x - b * y - z + c * x ** 3;
-          x += dx * dt;
-          y += dy * dt;
-          z += dz * dt;
-          points.push(x, y, z);
-        }
-        return new Float32Array(points);
+          return { dx, dy, dz };
+        });
       }
     }
+
     class BoualiAttractor extends AttractorGenerator {
       generatePoints() {
-        const {
-          alpha = 3.0, beta = 2.2, gamma = 1.0, mu = 1.2, dt = 0.001, numPoints, initial = {
-            x: 1.0,
-            y: 1.0,
-            z: 0
-          }
-        } = this.params;
-        let {
-          x,
-          y,
-          z
-        } = initial;
-        const points = [];
-        for (let i = 0; i < numPoints; i++) {
+        const defaults = {
+          alpha: 3.0,
+          beta: 2.2,
+          gamma: 1.0,
+          mu: 1.2,
+          dt: 0.001,
+          numPoints: 1000,
+          initial: { x: 1.0, y: 1.0, z: 0 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { alpha, beta, gamma, mu } = this.params;
           const dx = alpha * x * (1 - y) - beta * z;
           const dy = -gamma * y * (1 - x ** 2);
           const dz = mu * x;
-          x += dx * dt;
-          y += dy * dt;
-          z += dz * dt;
-          points.push(x, y, z);
-        }
-        return new Float32Array(points);
+          return { dx, dy, dz };
+        });
       }
     }
+
     class BrukeshawAttractor extends AttractorGenerator {
       generatePoints() {
-        const {
-          s = 10, v = 4.272, dt = 0.001, numPoints, initial = {
-            x: 0.1,
-            y: 0,
-            z: 0
-          }
-        } = this.params;
-        let {
-          x,
-          y,
-          z
-        } = initial;
-        const points = [];
-        for (let i = 0; i < numPoints; i++) {
+        const defaults = {
+          s: 10,
+          v: 4.272,
+          dt: 0.001,
+          numPoints: 1000,
+          initial: { x: 0.1, y: 0, z: 0 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { s, v } = this.params;
           const dx = -s * (x + y);
           const dy = -y - s * x * z;
           const dz = s * x * y + v;
-          x += dx * dt;
-          y += dy * dt;
-          z += dz * dt;
-          points.push(x, y, z);
-        }
-        return new Float32Array(points);
+          return { dx, dy, dz };
+        });
       }
     }
+
+    class ChenAttractor extends AttractorGenerator {
+      generatePoints() {
+        const defaults = {
+          alpha: 5,
+          beta: -10,
+          delta: -0.38,
+          dt: 0.001,
+          numPoints: 1000,
+          initial: { x: 5, y: 10, z: 10 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { alpha, beta, delta } = this.params;
+          const dx = alpha * x - y * z;
+          const dy = beta * y + x * z;
+          const dz = delta * z + (x * y) / 3;
+          return { dx, dy, dz };
+        });
+      }
+    }
+
+    class DadrasAttractor extends AttractorGenerator {
+      generatePoints() {
+        const defaults = {
+          a: 1.69,
+          b: 2.68,
+          c: 1.45,
+          d: 2.72,
+          e: 5.53,
+          dt: 0.01,
+          numPoints: 1000,
+          initial: { x: 1.1, y: 2.1, z: -2.0 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { a, b, c, d, e } = this.params;
+          const dx = y - a * x + b * y * z;
+          const dy = c * y - x * z + z;
+          const dz = d * x * y - e * z;
+          return { dx, dy, dz };
+        });
+      }
+    }
+
+    class FourwingAttractor extends AttractorGenerator {
+      generatePoints() {
+        const defaults = {
+          a: 0.2,
+          b: 0.01,
+          c: -0.4,
+          dt: 0.01,
+          numPoints: 1000,
+          initial: { x: 1.3, y: -0.18, z: 0.01 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { a, b, c } = this.params;
+          const dx = a * x + y * z;
+          const dy = b * x + c * y - x * z;
+          const dz = -z - x * y;
+          return { dx, dy, dz };
+        });
+      }
+    }
+
+    class HalvorsenAttractor extends AttractorGenerator {
+      generatePoints() {
+        const defaults = {
+          a: 1.89,
+          dt: 0.01,
+          numPoints: 1000,
+          initial: { x: -1.48, y: -1.51, z: 2.04 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { a } = this.params;
+          const dx = -a * x - 4 * y - 4 * z - y ** 2;
+          const dy = -a * y - 4 * z - 4 * x - z ** 2;
+          const dz = -a * z - 4 * x - 4 * y - x ** 2;
+          return { dx, dy, dz };
+        });
+      }
+    }
+
     class LorenzAttractor extends AttractorGenerator {
       generatePoints() {
-        const {
-          sigma = 10, rho = 28, beta = 8 / 3, dt = 0.001, numPoints, initial = {
-            x: 0.1,
-            y: 0,
-            z: 0
-          }
-        } = this.params;
-        let {
-          x,
-          y,
-          z
-        } = initial;
-        const points = [];
-        for (let i = 0; i < numPoints; i++) {
+        const defaults = {
+          sigma: 10,
+          rho: 28,
+          beta: 8 / 3,
+          dt: 0.001,
+          numPoints: 1000,
+          initial: { x: 0.1, y: 0, z: 0 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { sigma, rho, beta } = this.params;
           const dx = sigma * (y - x);
           const dy = x * (rho - z) - y;
           const dz = x * y - beta * z;
-          x += dx * dt;
-          y += dy * dt;
-          z += dz * dt;
-          points.push(x, y, z);
-        }
-        return new Float32Array(points);
+          return { dx, dy, dz };
+        });
       }
     }
+
     class RosslerAttractor extends AttractorGenerator {
       generatePoints() {
-        const {
-          a = 0.2, b = 0.2, c = 5.7, dt = 0.001, numPoints, initial = {
-            x: 0.1,
-            y: 0,
-            z: 0
-          }
-        } = this.params;
-        let {
-          x,
-          y,
-          z
-        } = initial;
-        const points = [];
-        for (let i = 0; i < numPoints; i++) {
+        const defaults = {
+          a: 0.26,
+          b: 1.64,
+          c: 9.88,
+          dt: 0.001,
+          numPoints: 1000,
+          initial: { x: 6.61, y: 8.41, z: 2.98 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { a, b, c } = this.params;
           const dx = -y - z;
           const dy = x + a * y;
           const dz = b + z * (x - c);
-          x += dx * dt;
-          y += dy * dt;
-          z += dz * dt;
-          points.push(x, y, z);
-        }
-        return new Float32Array(points);
+          return { dx, dy, dz };
+        });
+      }
+    }
+
+    class ThomasAttractor extends AttractorGenerator {
+      generatePoints() {
+        const defaults = {
+          b: 0.2,
+          dt: 0.01,
+          numPoints: 1000,
+          initial: { x: 1.1, y: 1.1, z: -0.1 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { b } = this.params;
+          const dx = Math.sin(y) - b * x;
+          const dy = Math.sin(z) - b * y;
+          const dz = Math.sin(x) - b * z;
+          return { dx, dy, dz };
+        });
+      }
+    }
+
+    class RabinovichFabrikantAttractor extends AttractorGenerator {
+      generatePoints() {
+        const defaults = {
+          alpha: 0.14,
+          gamma: 0.1,
+          dt: 0.01,
+          numPoints: 1000,
+          initial: { x: -1.0, y: 0, z: 0.5 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { alpha, gamma } = this.params;
+          const dx = y * (z - 1 + x ** 2) + gamma * x;
+          const dy = x * (3 * z + 1 - x ** 2) + gamma * y;
+          const dz = -2 * z * (alpha + x * y);
+          return { dx, dy, dz };
+        });
+      }
+    }
+
+    class SprottAttractor extends AttractorGenerator {
+      generatePoints() {
+        const defaults = {
+          a: 2.07,
+          b: 1.79,
+          dt: 0.01,
+          numPoints: 1000,
+          initial: { x: 0.63, y: 0.47, z: -0.54 }
+        };
+        this.params = { ...defaults, ...this.params };
+
+        return this.simulate((x, y, z) => {
+          const { a, b } = this.params;
+          const dx = y + a * x * y + x * z;
+          const dy = 1 - b * x ** 2 + y * z;
+          const dz = x - x ** 2 - y ** 2;
+          return { dx, dy, dz };
+        });
       }
     }
 
@@ -866,7 +1001,6 @@
         this.particleFlowEnabled = false;
         this.particleFlow = null;
         this.paused = false;
-        // Create attractor generators.
         this.attractorGenerators = {
           aizawa: new AizawaAttractor({
             numPoints: this.totalPoints
@@ -880,10 +1014,31 @@
           brukeshaw: new BrukeshawAttractor({
             numPoints: this.totalPoints
           }),
+          chen: new ChenAttractor({
+            numPoints: this.totalPoints
+          }),
+          dadras: new DadrasAttractor({
+            numPoints: this.totalPoints
+          }),
+          fourwing: new FourwingAttractor({
+            numPoints: this.totalPoints
+          }),
+          halvorsen: new HalvorsenAttractor({
+            numPoints: this.totalPoints
+          }),
           lorenz: new LorenzAttractor({
             numPoints: this.totalPoints
           }),
+          rabinovichfabrikant: new RabinovichFabrikantAttractor({
+            numPoints: this.totalPoints
+          }),
           rossler: new RosslerAttractor({
+            numPoints: this.totalPoints
+          }),
+          sprott: new SprottAttractor({
+            numPoints: this.totalPoints
+          }),
+          thomas: new ThomasAttractor({
             numPoints: this.totalPoints
           }),
         };
@@ -1059,8 +1214,15 @@
       <option value="arneodo">Arneodo</option>
       <option value="bouali">Bouali</option>
       <option value="brukeshaw">Bruke-Shaw</option>
+      <option value="chen">Chen</option>
+      <option value="dadras">Dadras</option>
+      <option value="fourwing">Fourwing</option>
+      <option value="halvorsen">Halvorsen</option>
       <option value="lorenz" selected="true">Lorenz</option>
+      <option value="rabinovichfabrikant">Rabinovich-Fabrikant</option>
       <option value="rossler">Rössler</option>
+      <option value="thomas">Thomas</option>
+      <option value="sprott">Sprott</option>
     </select>
 
     <label for="colormapSelect">Select Color Map:</label>
@@ -1073,7 +1235,7 @@
 
     <label for="speedSlider">Animation Speed:</label>
     <div class="range-container">
-      <input type="range" id="speedSlider" min="1" max="1000" value="100" />
+      <input type="range" id="speedSlider" min="0" max="1000" value="100" />
       <span id="speedValue">100</span>
     </div>
 
