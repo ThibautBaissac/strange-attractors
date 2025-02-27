@@ -234,55 +234,19 @@
     const fsSource = `#version 300 es
         precision mediump float;
         in vec3 vPosition;
-        uniform int uColormap;
         out vec4 fragColor;
+
         float smoothStepCustom(float edge0, float edge1, float x) {
           float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
           return t * t * (3.0 - 2.0 * t);
         }
-        vec3 viridisColormap(float t) {
-          return vec3(
-            0.5 + 0.5 * sin(6.2831 * t + 0.0),
-            0.5 + 0.5 * sin(6.2831 * t + 2.094),
-            0.5 + 0.5 * sin(6.2831 * t + 4.188)
-          );
-        }
-        vec3 parulaSinColormap(float t) {
-          float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.5);
-          float green = 0.5 + 0.5 * sin(6.2831 * t + 1.2);
-          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
-          return vec3(red, green, blue);
-        }
-        vec3 plasmaSinColormap(float t) {
-          float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
-          float green = 0.5 + 0.5 * sin(6.2831 * t + 0.8);
-          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 1.6);
-          return vec3(red, green, blue);
-        }
-        vec3 thermalSinColormap(float t) {
-          float red   = 0.5 + 0.5 * sin(6.2831 * t + 1.0);
-          float green = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
-          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
-          return vec3(red, green, blue);
-        }
+
         void main() {
           vec2 coord = gl_PointCoord - vec2(0.5);
           float dist = length(coord);
           float alpha = 1.0 - smoothStepCustom(0.45, 0.5, dist);
-          float t = fract(vPosition.z * 0.1);
-          vec3 color;
-          if(uColormap == 0) {
-            color = viridisColormap(t);
-          } else if(uColormap == 1) {
-            color = parulaSinColormap(t);
-          } else if(uColormap == 2) {
-            color = plasmaSinColormap(t);
-          } else if(uColormap == 3) {
-            color = thermalSinColormap(t);
-          } else {
-            color = viridisColormap(t);
-          }
-          fragColor = vec4(color, alpha);
+          vec3 blueColor = vec3(0.0, 0.5, 1.0); // Uniform blue color
+          fragColor = vec4(blueColor, alpha);
         }
       `;
 
@@ -305,55 +269,19 @@
     const particleFsSource = `#version 300 es
         precision mediump float;
         in vec3 vPos;
-        uniform int uColormap;
         out vec4 fragColor;
+
         float smoothStepCustom(float edge0, float edge1, float x) {
           float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
           return t * t * (3.0 - 2.0 * t);
         }
-        vec3 viridisColormap(float t) {
-          return vec3(
-            0.5 + 0.5 * sin(6.2831 * t + 0.0),
-            0.5 + 0.5 * sin(6.2831 * t + 2.094),
-            0.5 + 0.5 * sin(6.2831 * t + 4.188)
-          );
-        }
-        vec3 parulaSinColormap(float t) {
-          float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.5);
-          float green = 0.5 + 0.5 * sin(6.2831 * t + 1.2);
-          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
-          return vec3(red, green, blue);
-        }
-        vec3 plasmaSinColormap(float t) {
-          float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
-          float green = 0.5 + 0.5 * sin(6.2831 * t + 0.8);
-          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 1.6);
-          return vec3(red, green, blue);
-        }
-        vec3 thermalSinColormap(float t) {
-          float red   = 0.5 + 0.5 * sin(6.2831 * t + 1.0);
-          float green = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
-          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
-          return vec3(red, green, blue);
-        }
+
         void main() {
           vec2 coord = gl_PointCoord - vec2(0.5);
           float dist = length(coord);
           float alpha = 1.0 - smoothStepCustom(0.3, 0.5, dist);
-          float t = fract(vPos.z * 0.1);
-          vec3 color;
-          if(uColormap == 0) {
-            color = viridisColormap(t);
-          } else if(uColormap == 1) {
-            color = parulaSinColormap(t);
-          } else if(uColormap == 2) {
-            color = plasmaSinColormap(t);
-          } else if(uColormap == 3) {
-            color = thermalSinColormap(t);
-          } else {
-            color = viridisColormap(t);
-          }
-          fragColor = vec4(color, alpha);
+          vec3 blueColor = vec3(0.0, 0.5, 1.0); // Uniform blue color
+          fragColor = vec4(blueColor, alpha);
         }
       `;
 
@@ -404,6 +332,17 @@
     }
 
     class AizawaAttractor extends AttractorGenerator {
+      static get PARAM_RANGES() {
+        return {
+          a: [0.5, 1.5],
+          b: [0.5, 1.5],
+          c: [0.1, 1.0],
+          d: [2.0, 5.0],
+          e: [0.1, 0.5],
+          f: [0.05, 0.2],
+          initial: { x: [-1, 1], y: [-1, 1], z: [-1, 1] }
+        };
+      }
       generatePoints() {
         // Merge defaults with any passed parameters
         const defaults = {
@@ -452,6 +391,15 @@
     }
 
     class BoualiAttractor extends AttractorGenerator {
+      static get PARAM_RANGES() {
+        return {
+          alpha: [2.0, 4.0],
+          beta: [2.0, 3.0],
+          gamma: [0.5, 1.5],
+          mu: [1.0, 2.0],
+          initial: { x: [0, 2], y: [0, 2], z: [-1, 1] }
+        };
+      }
       generatePoints() {
         const defaults = {
           alpha: 3.0,
@@ -496,6 +444,14 @@
     }
 
     class ChenAttractor extends AttractorGenerator {
+      static get PARAM_RANGES() {
+        return {
+          alpha: [4, 6],
+          beta: [-12, -8],
+          delta: [-0.5, -0.2],
+          initial: { x: [4, 6], y: [8, 12], z: [8, 12] }
+        };
+      }
       generatePoints() {
         const defaults = {
           alpha: 5,
@@ -584,6 +540,14 @@
     }
 
     class LorenzAttractor extends AttractorGenerator {
+      static get PARAM_RANGES() {
+        return {
+          sigma: [5, 15],
+          rho: [20, 40],
+          beta: [1, 5],
+          initial: { x: [-1, 1], y: [-1, 1], z: [-1, 1] }
+        };
+      }
       generatePoints() {
         const defaults = {
           sigma: 10,
@@ -606,6 +570,14 @@
     }
 
     class RosslerAttractor extends AttractorGenerator {
+      static get PARAM_RANGES() {
+        return {
+          a: [0.1, 0.3],
+          b: [1.5, 2.5],
+          c: [5, 15],
+          initial: { x: [5, 10], y: [5, 10], z: [0, 5] }
+        };
+      }
       generatePoints() {
         const defaults = {
           a: 0.26,
@@ -628,6 +600,12 @@
     }
 
     class ThomasAttractor extends AttractorGenerator {
+      static get PARAM_RANGES() {
+        return {
+          b: [0.1, 0.3],
+          initial: { x: [0, 2], y: [0, 2], z: [-1, 1] }
+        };
+      }
       generatePoints() {
         const defaults = {
           b: 0.2,
@@ -690,7 +668,7 @@
     }
 
     /*******************************
-     * Camera (SRP & DIP)
+     * Camera
      *******************************/
     class Camera {
       constructor() {
@@ -779,7 +757,6 @@
         gl.useProgram(this.shaderProgram.program);
         gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uProjectionMatrix, false, projectionMatrix);
         gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uModelViewMatrix, false, modelViewMatrix);
-        gl.uniform1i(this.shaderProgram.uniformLocations.uColormap, colormap);
         const count = Math.min(drawCount, buffers.numPoints);
         gl.drawArrays(gl.POINTS, 0, count);
       }
@@ -863,7 +840,7 @@
           particleVsSource,
           particleFsSource,
           ["aPosition"],
-          ["uProjectionMatrix", "uModelViewMatrix", "uPointSize", "uColormap"]
+          ["uProjectionMatrix", "uModelViewMatrix", "uPointSize"]
         );
       }
       update() {
@@ -897,7 +874,6 @@
         gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uProjectionMatrix, false, projectionMatrix);
         gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uModelViewMatrix, false, modelViewMatrix);
         gl.uniform1f(this.shaderProgram.uniformLocations.uPointSize, 6.0);
-        gl.uniform1i(this.shaderProgram.uniformLocations.uColormap, colormap);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
         gl.vertexAttribPointer(this.shaderProgram.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(this.shaderProgram.attribLocations.aPosition);
@@ -914,12 +890,6 @@
     class UIController {
       constructor(app) {
         this.app = app;
-        this.colormapMap = {
-          viridis: 0,
-          parula: 1,
-          plasma: 2,
-          thermal: 3,
-        };
       }
       init() {
         const toggleControls = document.getElementById("toggleControls");
@@ -928,10 +898,11 @@
         const speedValue = document.getElementById("speedValue");
         const pointsInput = document.getElementById("pointsInput");
         const resetButton = document.getElementById("resetButton");
-        const colormapSelect = document.getElementById("colormapSelect");
         const centerButton = document.getElementById("centerButton");
         const particleFlowToggle = document.getElementById("particleFlowToggle");
         const pauseButton = document.getElementById("pauseButton");
+        const randomizeButton = document.getElementById("randomizeButton");
+        this.parametersContainer = document.getElementById("parametersContainer");
 
         toggleControls.addEventListener("click", (e) => {
           const ui = document.getElementById("ui");
@@ -952,9 +923,7 @@
         });
         attractorSelect.addEventListener("change", (e) => {
           this.app.updateAttractor(e.target.value);
-        });
-        colormapSelect.addEventListener("change", (e) => {
-          this.app.currentColormap = this.colormapMap[e.target.value] || 0;
+          this.updateParameterUI();
         });
         centerButton.addEventListener("click", () => {
           this.app.recenterView();
@@ -969,6 +938,11 @@
           this.app.togglePause();
           pauseButton.textContent = this.app.paused ? "Play" : "Pause";
         });
+        randomizeButton.addEventListener("click", () => {
+          this.app.randomizeParameters();
+          this.updateParameterUI();
+          this.app.updateAttractor(this.app.currentAttractorType);
+        });
         const xyButton = document.getElementById("xyButton");
         const yzButton = document.getElementById("yzButton");
         const xzButton = document.getElementById("xzButton");
@@ -980,6 +954,47 @@
         });
         xzButton.addEventListener("click", () => {
           this.app.setViewXZ();
+        });
+      }
+      updateParameterUI() {
+        const generator = this.app.attractorGenerators[this.app.currentAttractorType];
+        const params = generator.params;
+        const ranges = generator.constructor.PARAM_RANGES;
+
+        let html = '<div class="param-group">';
+
+        // Create inputs for each parameter
+        Object.entries(params).forEach(([key, value]) => {
+          if (key === 'initial') {
+            Object.entries(value).forEach(([coord, val]) => {
+              html += `
+                <label>Initial ${coord}:</label>
+                <input type="number" class="param-input" data-param="initial.${coord}"
+                       value="${val.toFixed(3)}" step="0.1"
+                       min="${ranges.initial[coord][0]}" max="${ranges.initial[coord][1]}">
+              `;
+            });
+          } else if (key !== 'numPoints' && key !== 'dt') {
+            html += `
+              <label>${key.toUpperCase()}:</label>
+              <input type="number" class="param-input" data-param="${key}"
+                     value="${value.toFixed(3)}" step="0.1"
+                     min="${ranges[key][0]}" max="${ranges[key][1]}">
+            `;
+          }
+        });
+
+        html += '</div>';
+        this.parametersContainer.innerHTML = html;
+
+        // Add input listeners
+        document.querySelectorAll('.param-input').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const paramPath = e.target.dataset.param;
+            const value = parseFloat(e.target.value);
+            this.app.setParameter(paramPath, value);
+            this.app.updateAttractor(this.app.currentAttractorType);
+          });
         });
       }
     }
@@ -997,7 +1012,6 @@
         this.drawIncrement = 5;
         this.totalPoints = 100000;
         this.currentAttractorType = "lorenz";
-        this.currentColormap = 0;
         this.particleFlowEnabled = false;
         this.particleFlow = null;
         this.paused = false;
@@ -1049,7 +1063,7 @@
           vsSource,
           fsSource,
           ["aPosition"],
-          ["uProjectionMatrix", "uModelViewMatrix", "uColormap"]
+          ["uProjectionMatrix", "uModelViewMatrix"]
         );
         this.csShader = new ShaderProgram(
           this.gl,
@@ -1088,16 +1102,15 @@
       }
       recenterView() {
         if (!this.currentPositions) return;
-        let minX = Infinity,
-          minY = Infinity,
-          minZ = Infinity;
-        let maxX = -Infinity,
-          maxY = -Infinity,
-          maxZ = -Infinity;
+
+        // Calculate bounds from actual points, not initial positions
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
         for (let i = 0; i < this.currentPositions.length; i += 3) {
-          const x = this.currentPositions[i],
-            y = this.currentPositions[i + 1],
-            z = this.currentPositions[i + 2];
+          const x = this.currentPositions[i];
+          const y = this.currentPositions[i + 1];
+          const z = this.currentPositions[i + 2];
           minX = Math.min(minX, x);
           minY = Math.min(minY, y);
           minZ = Math.min(minZ, z);
@@ -1105,16 +1118,15 @@
           maxY = Math.max(maxY, y);
           maxZ = Math.max(maxZ, z);
         }
-        const center = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+
+        const center = [
+          (minX + maxX) / 2,
+          (minY + maxY) / 2,
+          (minZ + maxZ) / 2
+        ];
+
         this.camera.setCenter(center);
-        let radius = 0;
-        for (let i = 0; i < this.currentPositions.length; i += 3) {
-          const dx = this.currentPositions[i] - center[0],
-            dy = this.currentPositions[i + 1] - center[1],
-            dz = this.currentPositions[i + 2] - center[2];
-          radius = Math.max(radius, Math.sqrt(dx * dx + dy * dy + dz * dz));
-        }
-        this.camera.distance = radius * 2;
+        this.camera.distance = Math.max(maxX - minX, maxY - minY, maxZ - minZ) * 2;
       }
       setViewXY() {
         this.recenterView();
@@ -1180,17 +1192,50 @@
         if (this.renderer.buffers && this.currentDrawCount < this.renderer.buffers.numPoints) {
           this.currentDrawCount += this.drawIncrement;
         }
-        this.renderer.draw(this.renderer.buffers, this.currentDrawCount, this.currentColormap);
+        this.renderer.draw(this.renderer.buffers, this.currentDrawCount, 0);
         this.csRenderer.draw();
         if (this.particleFlowEnabled && this.particleFlow) {
           this.particleFlow.update();
-          this.particleFlow.draw(this.camera, this.currentColormap);
+          this.particleFlow.draw(this.camera, 0);
         }
         const pointCounter = document.getElementById("pointCounter");
         if (pointCounter) {
           pointCounter.textContent = this.currentDrawCount;
         }
         requestAnimationFrame(() => this.animate());
+      }
+      setParameter(path, value) {
+        const [mainKey, subKey] = path.split('.');
+        const generator = this.attractorGenerators[this.currentAttractorType];
+
+        if (subKey) {
+          generator.params[mainKey][subKey] = value;
+        } else {
+          generator.params[mainKey] = value;
+        }
+      }
+      randomizeParameters() {
+        const generator = this.attractorGenerators[this.currentAttractorType];
+        const ranges = generator.constructor.PARAM_RANGES;
+
+        // Only randomize if ranges exist
+        if (ranges) {
+          Object.entries(ranges).forEach(([key, range]) => {
+            if (key === 'initial') {
+              Object.entries(range).forEach(([coord, [min, max]]) => {
+                generator.params.initial[coord] = this.randomInRange(min, max);
+              });
+            } else {
+              generator.params[key] = this.randomInRange(range[0], range[1]);
+            }
+          });
+        }
+
+        // Force full reset
+        this.updateAttractor(this.currentAttractorType);
+      }
+      randomInRange(min, max) {
+        return Math.random() * (max - min) + min;
       }
     }
 
@@ -1225,14 +1270,6 @@
       <option value="sprott">Sprott</option>
     </select>
 
-    <label for="colormapSelect">Select Color Map:</label>
-    <select id="colormapSelect">
-      <option value="viridis">Viridis</option>
-      <option value="parula">Parula</option>
-      <option value="plasma">Plasma</option>
-      <option value="thermal">Thermal</option>
-    </select>
-
     <label for="speedSlider">Animation Speed:</label>
     <div class="range-container">
       <input type="range" id="speedSlider" min="0" max="1000" value="100" />
@@ -1259,6 +1296,9 @@
       <button id="yzButton">YZ</button>
       <button id="xzButton">XZ</button>
     </div>
+
+    <div id="parametersContainer"></div>
+    <button id="randomizeButton">Randomize</button>
   </div>
   <canvas id="glcanvas"></canvas>
 </body>
