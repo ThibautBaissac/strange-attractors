@@ -33,17 +33,29 @@
       cursor: grab;
     }
 
+    #toggleControls {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      z-index: 100;
+      background: #ccc;
+      border: none;
+      padding: 5px;
+      color: #fff;
+      cursor: pointer;
+    }
+
     #ui {
       position: absolute;
-      top: 15px;
-      left: 15px;
+      top: 35px;
+      left: 5px;
       z-index: 100;
       background: var(--background-color);
       padding: 20px;
       border-radius: var(--border-radius);
       box-shadow: var(--shadow);
       backdrop-filter: blur(8px);
-      max-width: 280px;
+      max-width: 250px;
     }
 
     /* Form elements styling */
@@ -51,11 +63,12 @@
       font-size: 0.9rem;
       margin-bottom: 5px;
       color: var(--text-color);
-      display: block;
+      display: inline-block
     }
 
     #ui select,
-    #ui input[type="number"] {
+    #ui input[type="number"],
+    #ui input[type="checkbox"] {
       width: 100%;
       padding: 8px;
       margin-bottom: 10px;
@@ -65,7 +78,12 @@
       background: #fff;
     }
 
-    /* Custom range slider styling */
+    #ui input[type="checkbox"] {
+      width: auto;
+      margin-right: 10px;
+    }
+
+
     .range-container {
       display: flex;
       align-items: center;
@@ -106,7 +124,6 @@
       color: var(--text-color);
     }
 
-    /* Styling the point counter */
     #pointCounter {
       display: inline-block;
       background: var(--accent-color);
@@ -135,7 +152,12 @@
       background: #3a78c2;
     }
 
-    /* Grouping for the XYZ buttons */
+    .play-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
     .xyz-group {
       display: flex;
       gap: 10px;
@@ -150,7 +172,9 @@
     }
   </style>
   <script type="module">
-    import { mat4 } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.2/src/index.js';
+    import {
+      mat4
+    } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.2/src/index.js';
 
     /*******************************
      * Utility: GLUtil
@@ -193,9 +217,8 @@
     }
 
     /*******************************
-     * Shader Sources
+     * Shader Sources for Attractor
      *******************************/
-    // Updated Attractor shaders using point sprites with halo effect.
     const vsSource = `#version 300 es
         in vec3 aPosition;
         uniform mat4 uProjectionMatrix;
@@ -204,7 +227,7 @@
         void main() {
           vec4 pos = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
           gl_Position = pos;
-          gl_PointSize = 1.5; // Set the point sprite size here.
+          gl_PointSize = 2.5;
           vPosition = aPosition;
         }
       `;
@@ -213,13 +236,10 @@
         in vec3 vPosition;
         uniform int uColormap;
         out vec4 fragColor;
-
         float smoothStepCustom(float edge0, float edge1, float x) {
           float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
           return t * t * (3.0 - 2.0 * t);
         }
-
-        // Viridis-inspired colormap using sine functions.
         vec3 viridisColormap(float t) {
           return vec3(
             0.5 + 0.5 * sin(6.2831 * t + 0.0),
@@ -245,13 +265,10 @@
           float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
           return vec3(red, green, blue);
         }
-
         void main() {
-          // Create the halo effect using gl_PointCoord
           vec2 coord = gl_PointCoord - vec2(0.5);
           float dist = length(coord);
-          float alpha = 1.0 - smoothstep(0.45, 0.5, dist);
-
+          float alpha = 1.0 - smoothStepCustom(0.45, 0.5, dist);
           float t = fract(vPosition.z * 0.1);
           vec3 color;
           if(uColormap == 0) {
@@ -269,7 +286,80 @@
         }
       `;
 
-    // Coordinate system widget shaders (unchanged)
+    /*******************************
+     * Shader Sources for Particle Flow
+     *******************************/
+    const particleVsSource = `#version 300 es
+        in vec3 aPosition;
+        uniform mat4 uProjectionMatrix;
+        uniform mat4 uModelViewMatrix;
+        uniform float uPointSize;
+        out vec3 vPos;
+        void main() {
+          vec4 pos = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+          gl_Position = pos;
+          gl_PointSize = uPointSize;
+          vPos = aPosition;
+        }
+      `;
+    const particleFsSource = `#version 300 es
+        precision mediump float;
+        in vec3 vPos;
+        uniform int uColormap;
+        out vec4 fragColor;
+        float smoothStepCustom(float edge0, float edge1, float x) {
+          float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+          return t * t * (3.0 - 2.0 * t);
+        }
+        vec3 viridisColormap(float t) {
+          return vec3(
+            0.5 + 0.5 * sin(6.2831 * t + 0.0),
+            0.5 + 0.5 * sin(6.2831 * t + 2.094),
+            0.5 + 0.5 * sin(6.2831 * t + 4.188)
+          );
+        }
+        vec3 parulaSinColormap(float t) {
+          float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.5);
+          float green = 0.5 + 0.5 * sin(6.2831 * t + 1.2);
+          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
+          return vec3(red, green, blue);
+        }
+        vec3 plasmaSinColormap(float t) {
+          float red   = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
+          float green = 0.5 + 0.5 * sin(6.2831 * t + 0.8);
+          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 1.6);
+          return vec3(red, green, blue);
+        }
+        vec3 thermalSinColormap(float t) {
+          float red   = 0.5 + 0.5 * sin(6.2831 * t + 1.0);
+          float green = 0.5 + 0.5 * sin(6.2831 * t + 0.0);
+          float blue  = 0.5 + 0.5 * sin(6.2831 * t + 2.0);
+          return vec3(red, green, blue);
+        }
+        void main() {
+          vec2 coord = gl_PointCoord - vec2(0.5);
+          float dist = length(coord);
+          float alpha = 1.0 - smoothStepCustom(0.3, 0.5, dist);
+          float t = fract(vPos.z * 0.1);
+          vec3 color;
+          if(uColormap == 0) {
+            color = viridisColormap(t);
+          } else if(uColormap == 1) {
+            color = parulaSinColormap(t);
+          } else if(uColormap == 2) {
+            color = plasmaSinColormap(t);
+          } else if(uColormap == 3) {
+            color = thermalSinColormap(t);
+          } else {
+            color = viridisColormap(t);
+          }
+          fragColor = vec4(color, alpha);
+        }
+      `;
+
+    /*******************************
+     * Coordinate System Shaders
+     *******************************/
     const csVsSource = `#version 300 es
         in vec3 aPosition;
         in vec3 aColor;
@@ -303,8 +393,18 @@
     }
     class AizawaAttractor extends AttractorGenerator {
       generatePoints() {
-        const { a = 0.95, b = 0.7, c = 0.6, d = 3.5, e = 0.25, f = 0.1, dt = 0.01, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
-        let { x, y, z } = initial;
+        const {
+          a = 0.95, b = 0.7, c = 0.6, d = 3.5, e = 0.25, f = 0.1, dt = 0.01, numPoints, initial = {
+            x: 0.1,
+            y: 0,
+            z: 0
+          }
+        } = this.params;
+        let {
+          x,
+          y,
+          z
+        } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
           const dx = (z - b) * x - d * y;
@@ -320,8 +420,18 @@
     }
     class ArneodoAttractor extends AttractorGenerator {
       generatePoints() {
-        const { a = -5.5, b = 3.5, c = -1.0, dt = 0.001, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
-        let { x, y, z } = initial;
+        const {
+          a = -5.5, b = 3.5, c = -1.0, dt = 0.001, numPoints, initial = {
+            x: 0.1,
+            y: 0,
+            z: 0
+          }
+        } = this.params;
+        let {
+          x,
+          y,
+          z
+        } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
           const dx = y;
@@ -337,8 +447,18 @@
     }
     class BoualiAttractor extends AttractorGenerator {
       generatePoints() {
-        const { alpha = 3.0, beta = 2.2, gamma = 1.0, mu = 1.2, dt = 0.001, numPoints, initial = { x: 1.0, y: 1.0, z: 0 } } = this.params;
-        let { x, y, z } = initial;
+        const {
+          alpha = 3.0, beta = 2.2, gamma = 1.0, mu = 1.2, dt = 0.001, numPoints, initial = {
+            x: 1.0,
+            y: 1.0,
+            z: 0
+          }
+        } = this.params;
+        let {
+          x,
+          y,
+          z
+        } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
           const dx = alpha * x * (1 - y) - beta * z;
@@ -354,8 +474,18 @@
     }
     class BrukeshawAttractor extends AttractorGenerator {
       generatePoints() {
-        const { s = 10, v = 4.272, dt = 0.001, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
-        let { x, y, z } = initial;
+        const {
+          s = 10, v = 4.272, dt = 0.001, numPoints, initial = {
+            x: 0.1,
+            y: 0,
+            z: 0
+          }
+        } = this.params;
+        let {
+          x,
+          y,
+          z
+        } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
           const dx = -s * (x + y);
@@ -371,8 +501,18 @@
     }
     class LorenzAttractor extends AttractorGenerator {
       generatePoints() {
-        const { sigma = 10, rho = 28, beta = 8 / 3, dt = 0.001, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
-        let { x, y, z } = initial;
+        const {
+          sigma = 10, rho = 28, beta = 8 / 3, dt = 0.001, numPoints, initial = {
+            x: 0.1,
+            y: 0,
+            z: 0
+          }
+        } = this.params;
+        let {
+          x,
+          y,
+          z
+        } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
           const dx = sigma * (y - x);
@@ -388,8 +528,18 @@
     }
     class RosslerAttractor extends AttractorGenerator {
       generatePoints() {
-        const { a = 0.2, b = 0.2, c = 5.7, dt = 0.001, numPoints, initial = { x: 0.1, y: 0, z: 0 } } = this.params;
-        let { x, y, z } = initial;
+        const {
+          a = 0.2, b = 0.2, c = 5.7, dt = 0.001, numPoints, initial = {
+            x: 0.1,
+            y: 0,
+            z: 0
+          }
+        } = this.params;
+        let {
+          x,
+          y,
+          z
+        } = initial;
         const points = [];
         for (let i = 0; i < numPoints; i++) {
           const dx = -y - z;
@@ -405,7 +555,7 @@
     }
 
     /*******************************
-     * Camera
+     * Camera (SRP & DIP)
      *******************************/
     class Camera {
       constructor() {
@@ -481,27 +631,21 @@
         gl.enable(gl.DEPTH_TEST);
         gl.depthFunc(gl.LEQUAL);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
         const fieldOfView = (45 * Math.PI) / 180;
         const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
         const zNear = 0.1;
         const zFar = 1000.0;
         const projectionMatrix = mat4.create();
         mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
-
         const modelViewMatrix = this.camera.getViewMatrix();
-
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
         gl.vertexAttribPointer(this.shaderProgram.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(this.shaderProgram.attribLocations.aPosition);
-
         gl.useProgram(this.shaderProgram.program);
         gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uProjectionMatrix, false, projectionMatrix);
         gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uModelViewMatrix, false, modelViewMatrix);
         gl.uniform1i(this.shaderProgram.uniformLocations.uColormap, colormap);
-
         const count = Math.min(drawCount, buffers.numPoints);
-        // Draw using points instead of a line strip
         gl.drawArrays(gl.POINTS, 0, count);
       }
     }
@@ -546,28 +690,86 @@
         const canvasHeight = gl.canvas.height;
         const widgetSize = 150;
         gl.viewport(canvasWidth - widgetSize - 10, 10, widgetSize, widgetSize);
-
         const projMatrix = mat4.create();
         mat4.ortho(projMatrix, -1, 1, -1, 1, -1, 1);
-
         const mvMatrix = mat4.create();
         mat4.rotate(mvMatrix, mvMatrix, this.camera.angleY, [1, 0, 0]);
         mat4.rotate(mvMatrix, mvMatrix, this.camera.angleX, [0, 1, 0]);
-
         gl.useProgram(this.shaderProgram.program);
         gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uProjectionMatrix, false, projMatrix);
         gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uModelViewMatrix, false, mvMatrix);
-
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.vertex);
         gl.vertexAttribPointer(this.shaderProgram.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(this.shaderProgram.attribLocations.aPosition);
-
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.color);
         gl.vertexAttribPointer(this.shaderProgram.attribLocations.aColor, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(this.shaderProgram.attribLocations.aColor);
-
         gl.drawArrays(gl.LINES, 0, this.buffers.numVertices);
         gl.viewport(0, 0, canvasWidth, canvasHeight);
+      }
+    }
+
+    /*******************************
+     * Particle Flow
+     *******************************/
+    class ParticleFlow {
+      constructor(gl, attractorPositions, numParticles = 2000, speed = 0.5) {
+        this.gl = gl;
+        this.attractorPositions = attractorPositions;
+        this.numParticles = numParticles;
+        this.speed = speed;
+        this.particleIndices = new Float32Array(numParticles);
+        for (let i = 0; i < numParticles; i++) {
+          this.particleIndices[i] = Math.random() * (attractorPositions.length / 3);
+        }
+        this.buffer = gl.createBuffer();
+        this.shaderProgram = new ShaderProgram(
+          gl,
+          particleVsSource,
+          particleFsSource,
+          ["aPosition"],
+          ["uProjectionMatrix", "uModelViewMatrix", "uPointSize", "uColormap"]
+        );
+      }
+      update() {
+        const totalPoints = this.attractorPositions.length / 3;
+        for (let i = 0; i < this.numParticles; i++) {
+          this.particleIndices[i] += this.speed;
+          if (this.particleIndices[i] >= totalPoints) {
+            this.particleIndices[i] -= totalPoints;
+          }
+        }
+        const particlePositions = new Float32Array(this.numParticles * 3);
+        for (let i = 0; i < this.numParticles; i++) {
+          const index = Math.floor(this.particleIndices[i]) * 3;
+          particlePositions[i * 3] = this.attractorPositions[index];
+          particlePositions[i * 3 + 1] = this.attractorPositions[index + 1];
+          particlePositions[i * 3 + 2] = this.attractorPositions[index + 2];
+        }
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, particlePositions, this.gl.DYNAMIC_DRAW);
+      }
+      draw(camera, colormap) {
+        const gl = this.gl;
+        const fieldOfView = (45 * Math.PI) / 180;
+        const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+        const zNear = 0.1;
+        const zFar = 1000.0;
+        const projectionMatrix = mat4.create();
+        mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
+        const modelViewMatrix = camera.getViewMatrix();
+        gl.useProgram(this.shaderProgram.program);
+        gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uProjectionMatrix, false, projectionMatrix);
+        gl.uniformMatrix4fv(this.shaderProgram.uniformLocations.uModelViewMatrix, false, modelViewMatrix);
+        gl.uniform1f(this.shaderProgram.uniformLocations.uPointSize, 6.0);
+        gl.uniform1i(this.shaderProgram.uniformLocations.uColormap, colormap);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+        gl.vertexAttribPointer(this.shaderProgram.attribLocations.aPosition, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(this.shaderProgram.attribLocations.aPosition);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        gl.drawArrays(gl.POINTS, 0, this.numParticles);
+        gl.disable(gl.BLEND);
       }
     }
 
@@ -585,6 +787,7 @@
         };
       }
       init() {
+        const toggleControls = document.getElementById("toggleControls");
         const attractorSelect = document.getElementById("attractorSelect");
         const speedSlider = document.getElementById("speedSlider");
         const speedValue = document.getElementById("speedValue");
@@ -592,7 +795,18 @@
         const resetButton = document.getElementById("resetButton");
         const colormapSelect = document.getElementById("colormapSelect");
         const centerButton = document.getElementById("centerButton");
+        const particleFlowToggle = document.getElementById("particleFlowToggle");
+        const pauseButton = document.getElementById("pauseButton");
 
+        toggleControls.addEventListener("click", (e) => {
+          const ui = document.getElementById("ui");
+          const currentDisplay = window.getComputedStyle(ui).display;
+          if (currentDisplay === "none") {
+            ui.style.display = "block";
+          } else {
+            ui.style.display = "none";
+          }
+        });
         speedSlider.addEventListener("input", (e) => {
           this.app.drawIncrement = Number(e.target.value);
           speedValue.textContent = e.target.value;
@@ -613,12 +827,16 @@
         resetButton.addEventListener("click", () => {
           this.app.updateAttractor(this.app.currentAttractorType);
         });
-
-        // --- New Buttons for preset plane views ---
+        particleFlowToggle.addEventListener("change", (e) => {
+          this.app.toggleParticleFlow(e.target.checked);
+        });
+        pauseButton.addEventListener("click", () => {
+          this.app.togglePause();
+          pauseButton.textContent = this.app.paused ? "Play" : "Pause";
+        });
         const xyButton = document.getElementById("xyButton");
         const yzButton = document.getElementById("yzButton");
         const xzButton = document.getElementById("xzButton");
-
         xyButton.addEventListener("click", () => {
           this.app.setViewXY();
         });
@@ -632,7 +850,7 @@
     }
 
     /*******************************
-     * Application (Orchestrator)
+     * Application
      *******************************/
     class Application {
       constructor(canvas) {
@@ -644,19 +862,33 @@
         this.drawIncrement = 5;
         this.totalPoints = 100000;
         this.currentAttractorType = "lorenz";
+        this.currentColormap = 0;
+        this.particleFlowEnabled = false;
+        this.particleFlow = null;
+        this.paused = false;
         // Create attractor generators.
         this.attractorGenerators = {
-          aizawa: new AizawaAttractor({ numPoints: this.totalPoints }),
-          arneodo: new ArneodoAttractor({ numPoints: this.totalPoints }),
-          bouali: new BoualiAttractor({ numPoints: this.totalPoints }),
-          brukeshaw: new BrukeshawAttractor({ numPoints: this.totalPoints }),
-          lorenz: new LorenzAttractor({ numPoints: this.totalPoints }),
-          rossler: new RosslerAttractor({ numPoints: this.totalPoints }),
+          aizawa: new AizawaAttractor({
+            numPoints: this.totalPoints
+          }),
+          arneodo: new ArneodoAttractor({
+            numPoints: this.totalPoints
+          }),
+          bouali: new BoualiAttractor({
+            numPoints: this.totalPoints
+          }),
+          brukeshaw: new BrukeshawAttractor({
+            numPoints: this.totalPoints
+          }),
+          lorenz: new LorenzAttractor({
+            numPoints: this.totalPoints
+          }),
+          rossler: new RosslerAttractor({
+            numPoints: this.totalPoints
+          }),
         };
-        this.currentColormap = 0;
       }
       init() {
-        // Initialize shader programs
         this.attractorShader = new ShaderProgram(
           this.gl,
           vsSource,
@@ -671,26 +903,14 @@
           ["aPosition", "aColor"],
           ["uProjectionMatrix", "uModelViewMatrix"]
         );
-
-        // Create renderers
         this.renderer = new Renderer(this.gl, this.attractorShader, this.camera);
         this.csRenderer = new CoordinateSystemRenderer(this.gl, this.csShader, this.camera);
-
-        // Setup UI controls
         this.uiController = new UIController(this);
         this.uiController.init();
-
-        // Initialize attractor data
         this.updateAttractor(this.currentAttractorType);
-
-        // Set up camera mouse controls
         this.setupCameraControls();
-
-        // Resize canvas to fill window
         this.resizeCanvas();
         window.addEventListener("resize", () => this.resizeCanvas());
-
-        // Start the animation loop
         this.animate();
       }
       updateAttractor(type) {
@@ -700,9 +920,16 @@
         const positions = generator.generatePoints();
         this.renderer.initBuffers(positions);
         this.currentDrawCount = 0;
-        // Reset camera center (will be updated if recenter is triggered)
         this.camera.setCenter([0, 0, 0]);
         this.currentPositions = positions;
+        if (this.particleFlowEnabled) {
+          if (this.particleFlow) {
+            this.particleFlow.attractorPositions = positions;
+          } else {
+            this.particleFlow = new ParticleFlow(this.gl, positions, 2000, 0.5);
+          }
+        }
+        this.recenterView();
       }
       recenterView() {
         if (!this.currentPositions) return;
@@ -713,9 +940,9 @@
           maxY = -Infinity,
           maxZ = -Infinity;
         for (let i = 0; i < this.currentPositions.length; i += 3) {
-          const x = this.currentPositions[i];
-          const y = this.currentPositions[i + 1];
-          const z = this.currentPositions[i + 2];
+          const x = this.currentPositions[i],
+            y = this.currentPositions[i + 1],
+            z = this.currentPositions[i + 2];
           minX = Math.min(minX, x);
           minY = Math.min(minY, y);
           minZ = Math.min(minZ, z);
@@ -727,9 +954,9 @@
         this.camera.setCenter(center);
         let radius = 0;
         for (let i = 0; i < this.currentPositions.length; i += 3) {
-          const dx = this.currentPositions[i] - center[0];
-          const dy = this.currentPositions[i + 1] - center[1];
-          const dz = this.currentPositions[i + 2] - center[2];
+          const dx = this.currentPositions[i] - center[0],
+            dy = this.currentPositions[i + 1] - center[1],
+            dz = this.currentPositions[i + 2] - center[2];
           radius = Math.max(radius, Math.sqrt(dx * dx + dy * dy + dz * dz));
         }
         this.camera.distance = radius * 2;
@@ -748,6 +975,15 @@
         this.recenterView();
         this.camera.angleY = 0.0001;
         this.camera.angleX = 0;
+      }
+      toggleParticleFlow(enabled) {
+        this.particleFlowEnabled = enabled;
+        if (enabled && this.currentPositions && !this.particleFlow) {
+          this.particleFlow = new ParticleFlow(this.gl, this.currentPositions, 2000, 0.5);
+        }
+      }
+      togglePause() {
+        this.paused = !this.paused;
       }
       setupCameraControls() {
         let isDragging = false;
@@ -782,14 +1018,19 @@
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       }
       animate() {
+        if (this.paused) {
+          requestAnimationFrame(() => this.animate());
+          return;
+        }
         if (this.renderer.buffers && this.currentDrawCount < this.renderer.buffers.numPoints) {
           this.currentDrawCount += this.drawIncrement;
         }
-        // Draw the attractor as point sprites with halo
         this.renderer.draw(this.renderer.buffers, this.currentDrawCount, this.currentColormap);
-        // Draw the coordinate system widget
         this.csRenderer.draw();
-        // Update the live point counter display
+        if (this.particleFlowEnabled && this.particleFlow) {
+          this.particleFlow.update();
+          this.particleFlow.draw(this.camera, this.currentColormap);
+        }
         const pointCounter = document.getElementById("pointCounter");
         if (pointCounter) {
           pointCounter.textContent = this.currentDrawCount;
@@ -810,6 +1051,7 @@
 </head>
 
 <body>
+  <button id="toggleControls">Show/Hide controls</button>
   <div id="ui">
     <label for="attractorSelect">Select Attractor:</label>
     <select id="attractorSelect">
@@ -839,7 +1081,15 @@
     <input type="number" id="pointsInput" value="100000" min="1000" step="1000" />
     <span id="pointCounter">0</span>
 
-    <button id="resetButton">Restart</button>
+    <div class="particleFlow-group">
+      <input type="checkbox" id="particleFlowToggle" />
+      <label for="particleFlowToggle">Particle Flow</label>
+    </div>
+
+    <div class="play-group">
+      <button id="pauseButton">Pause</button>
+      <button id="resetButton">Reset</button>
+    </div>
 
     <div class="xyz-group">
       <button id="centerButton">Fit</button>
